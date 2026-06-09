@@ -16,11 +16,11 @@ help:
 
 .PHONY: proto
 proto: ## Generate Go code from proto definitions
-	mkdir -p controller/internal/api/zetapb
+	mkdir -p proto/zetapb
 	protoc \
-		--go_out=controller/internal/api/zetapb \
+		--go_out=proto/zetapb \
 		--go_opt=paths=source_relative \
-		--go-grpc_out=controller/internal/api/zetapb \
+		--go-grpc_out=proto/zetapb \
 		--go-grpc_opt=paths=source_relative \
 		-I proto proto/zeta.proto
 

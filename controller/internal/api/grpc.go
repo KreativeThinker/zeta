@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net"
 
-	"github.com/kreativethinker/zeta/controller/internal/api/zetapb"
+	"github.com/kreativethinker/zeta/proto/zetapb"
 	"github.com/kreativethinker/zeta/controller/internal/coordinator"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

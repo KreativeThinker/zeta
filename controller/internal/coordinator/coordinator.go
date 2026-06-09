@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kreativethinker/zeta/controller/internal/api/zetapb"
+	"github.com/kreativethinker/zeta/proto/zetapb"
 	"github.com/kreativethinker/zeta/controller/internal/ca"
 	"github.com/kreativethinker/zeta/controller/internal/config"
 	"github.com/kreativethinker/zeta/controller/internal/db"
