@@ -1,6 +1,6 @@
 module github.com/kreativethinker/zeta/agent
 
-go 1.26.3
+go 1.23
 
 require (
 	github.com/kreativethinker/zeta/proto v0.0.0-00010101000000-000000000000
