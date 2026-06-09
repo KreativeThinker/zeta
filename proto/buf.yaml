@@ -3,7 +3,15 @@ modules:
   - path: .
 lint:
   use:
-    - DEFAULT
+    - STANDARD
+  except:
+    # Proto file lives directly in proto/ not in proto/zeta/v1/ — intentional flat layout
+    - PACKAGE_DIRECTORY_MATCH
+    # GetServerKey uses Empty request and a named response for simplicity; not worth wrapping
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    # Sync reuses SyncUpdate/SyncResponse as the stream message types by design
+    - RPC_REQUEST_RESPONSE_UNIQUE
 breaking:
   use:
     - FILE
