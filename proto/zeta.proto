@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package zeta.v1;
+
+option go_package = "github.com/anumeya/zeta/controller/internal/api/zetapb";
+
+// Coordinator
+service CoordinatorService {
+  rpc GetServerKey(Empty) returns (ServerKeyResponse);
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Sync(stream SyncUpdate) returns (stream SyncResponse);
+}
+
+// Auth and Enrollment
+message RegisterRequest {
+  string wg_public_key = 1; // base64 Curve25519 public key
+  string hostname = 2;
+  string os = 3; // "linux" | "android"
+  string agent_version = 4;
+  string preauth_key = 5; // optional; skips browser auth flow
+}
+
+message RegisterResponse {
+  oneof result {
+    PendingAuth pending = 1; // interactive: open this URL
+    NodeConfig config = 2; // headless preauth: here's your config
+  }
+}
+
+message PendingAuth {
+  string auth_url = 1; // open in browser
+  string session_key = 2; // poll / stream with this after auth completes
+}
+
+message NodeConfig {
+  string node_id = 1;
+  string mesh_ip = 2;
+  string domain = 3;
+  bytes cert_pem = 4; // device certificate (PEM)
+  bytes ca_pem = 5; // coordinator CA root (PEM)
+}
+
+// Sync Streams
+// Client → Server
+message SyncUpdate {
+  oneof payload {
+    EndpointUpdate endpoint = 1;
+    ServiceUpdate services = 2;
+    PingUpdate ping = 3;
+  }
+}
+
+message EndpointUpdate {
+  string node_id = 1;
+  string endpoint = 2; // "ip:port" discovered via STUN
+}
+
+message ServiceUpdate {
+  string node_id = 1;
+  repeated Service services = 2;
+}
+
+message PingUpdate {
+  string node_id = 1;
+}
+
+// Server → Client
+message SyncResponse {
+  oneof payload {
+    NetworkMap network_map = 1;
+    RelayOffer relay = 2;
+    ICESignal ice_signal = 3;
+  }
+}
+
+// Network Map
+message NetworkMap {
+  repeated Peer peers = 1;
+  DNSConfig dns = 2;
+  RelayMap relay_map = 3;
+}
+
+message Peer {
+  string node_id = 1;
+  string wg_public_key = 2;
+  string mesh_ip = 3;
+  string hostname = 4;
+  string user_id = 5;
+  string endpoint = 6; // last known "ip:port"
+  repeated Service services = 7;
+  bool online = 8;
+}
+
+message Service {
+  string name = 1;
+  uint32 port = 2;
+  repeated string allowed_users = 3; // user IDs; empty = node-owner only
+}
+
+message DNSConfig {
+  string mesh_domain = 1; // e.g. "mesh"
+  string dns_server = 2; // coordinator's mesh IP as DNS server
+}
+
+message RelayMap {
+  repeated RelayServer servers = 1;
+}
+
+message RelayServer {
+  string id = 1;
+  string region = 2;
+  string hostname = 3;
+  uint32 port = 4;
+}
+
+// Relay
+message RelayOffer {
+  string from_node_id = 1;
+  string to_node_id = 2;
+}
+
+message ICESignal {
+  string from_node_id = 1;
+  string to_node_id = 2;
+  string payload = 3; // JSON-encoded ICE candidate or SDP
+}
+
+// Other
+message ServerKeyResponse {
+  string public_key = 1;
+}
+
+message Empty {}

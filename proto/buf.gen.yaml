@@ -1,0 +1,10 @@
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: ../controller/internal/api/zetapb
+    opt:
+      - paths=source_relative
+  - remote: buf.build/grpc/go
+    out: ../controller/internal/api/zetapb
+    opt:
+      - paths=source_relative

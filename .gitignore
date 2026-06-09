@@ -1,0 +1,47 @@
+# Binaries
+bin/
+/dist/
+*.exe
+*.out
+
+# Go
+*/vendor/
+go.work.sum
+
+# Frontend
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / local config
+*.pem
+*.key
+*.env
+.env.*
+!.env.example
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Build artifacts
+*.tar.gz
+*.zip
+
+# Frontend build output (generated — do not commit)
+# Exception: placeholder keeps go:embed compilable before first build
+controller/web/dist/*
+!controller/web/dist/index.html
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+*.apk
+*.aab

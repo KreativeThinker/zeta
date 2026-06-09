@@ -1,0 +1,99 @@
+name: Agent (Linux)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent/**'
+      - 'proto/**'
+      - '.github/workflows/agent-linux.yml'
+  pull_request:
+    paths:
+      - 'agent/**'
+      - 'proto/**'
+      - '.github/workflows/agent-linux.yml'
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: agent
+          version: latest
+
+      - name: Test
+        working-directory: agent
+        run: go test ./... -race -coverprofile=coverage.out
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-coverage
+          path: agent/coverage.out
+
+  build:
+    name: Build
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64, arm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: Build
+        working-directory: agent
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -trimpath -ldflags="-s -w \
+            -X main.Version=${{ github.ref_name }} \
+            -X main.Commit=${{ github.sha }}" \
+            -o ../dist/zeta-agent-linux-${{ matrix.goarch }} \
+            ./cmd/agent
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-linux-${{ matrix.goarch }}
+          path: dist/
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: agent-linux-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**
+          generate_release_notes: true
