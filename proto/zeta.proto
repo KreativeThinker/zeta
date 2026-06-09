@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package zeta.v1;
 
-option go_package = "github.com/anumeya/zeta/controller/internal/api/zetapb";
+option go_package = "github.com/kreativethinker/zeta/controller/internal/api/zetapb";
 
 // Coordinator
 service CoordinatorService {

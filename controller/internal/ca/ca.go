@@ -1,10 +1,182 @@
 package ca
 
-// CA is a minimal in-process certificate authority.
-// It issues short-lived device certificates binding user_id + device_id + WireGuard public key.
-type CA struct{}
+import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
+	"math/big"
+	"net"
+	"os"
+	"time"
 
-func New(certPEM, keyPEM []byte) (*CA, error) {
-	// TODO: load or generate root CA keypair
-	return &CA{}, nil
+	"github.com/kreativethinker/zeta/controller/internal/db"
+)
+
+// CA is an in-process certificate authority.
+type CA struct {
+	cert    *x509.Certificate
+	key     crypto.Signer
+	certPEM []byte
+}
+
+// LoadOrCreate loads the CA from disk paths or DB settings, generating a new
+// root CA and persisting it to DB if none exists.
+func LoadOrCreate(database *db.DB, certFile, keyFile string) (*CA, error) {
+	if certFile != "" && keyFile != "" {
+		return loadFromFiles(certFile, keyFile)
+	}
+	return loadOrCreateFromDB(database)
+}
+
+// CertPEM returns the CA certificate in PEM format.
+func (c *CA) CertPEM() []byte {
+	return c.certPEM
+}
+
+// IssueDeviceCert issues a 90-day TLS cert for a device.
+// The cert's CN is nodeID; SANs include the mesh IP and hostname.mesh DNS name.
+func (c *CA) IssueDeviceCert(nodeID, meshIP, hostname, meshDomain string) ([]byte, error) {
+	deviceKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generating device key: %w", err)
+	}
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, err
+	}
+
+	ip := net.ParseIP(meshIP)
+	if ip == nil {
+		return nil, fmt.Errorf("invalid mesh IP %q", meshIP)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: nodeID},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(90 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{ip},
+		DNSNames:     []string{fmt.Sprintf("%s.%s", hostname, meshDomain)},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, c.cert, deviceKey.Public(), c.key)
+	if err != nil {
+		return nil, fmt.Errorf("signing device cert: %w", err)
+	}
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER}), nil
+}
+
+// ── loaders ───────────────────────────────────────────────────────────────────
+
+func loadFromFiles(certFile, keyFile string) (*CA, error) {
+	certPEM, err := os.ReadFile(certFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading CA cert: %w", err)
+	}
+	keyPEM, err := os.ReadFile(keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading CA key: %w", err)
+	}
+	return parsePEM(certPEM, keyPEM)
+}
+
+func loadOrCreateFromDB(database *db.DB) (*CA, error) {
+	certPEMStr, err := database.GetSetting("ca_cert_pem")
+	if err != nil {
+		return nil, err
+	}
+	keyPEMStr, err := database.GetSetting("ca_key_pem")
+	if err != nil {
+		return nil, err
+	}
+
+	if certPEMStr != "" && keyPEMStr != "" {
+		return parsePEM([]byte(certPEMStr), []byte(keyPEMStr))
+	}
+
+	// Generate new root CA.
+	ca, certPEM, keyPEM, err := generate()
+	if err != nil {
+		return nil, err
+	}
+	if err := database.SetSetting("ca_cert_pem", string(certPEM)); err != nil {
+		return nil, err
+	}
+	if err := database.SetSetting("ca_key_pem", string(keyPEM)); err != nil {
+		return nil, err
+	}
+	return ca, nil
+}
+
+func generate() (*CA, []byte, []byte, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("generating CA key: %w", err)
+	}
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	template := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "Zeta Root CA"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("creating CA cert: %w", err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	return &CA{cert: cert, key: key, certPEM: certPEM}, certPEM, keyPEM, nil
+}
+
+func parsePEM(certPEM, keyPEM []byte) (*CA, error) {
+	certBlock, _ := pem.Decode(certPEM)
+	if certBlock == nil {
+		return nil, fmt.Errorf("failed to decode CA cert PEM")
+	}
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing CA cert: %w", err)
+	}
+
+	keyBlock, _ := pem.Decode(keyPEM)
+	if keyBlock == nil {
+		return nil, fmt.Errorf("failed to decode CA key PEM")
+	}
+	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing CA key: %w", err)
+	}
+
+	return &CA{cert: cert, key: key, certPEM: certPEM}, nil
 }

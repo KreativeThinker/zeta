@@ -16,10 +16,16 @@ help:
 
 .PHONY: proto
 proto: ## Generate Go code from proto definitions
-	cd proto && buf generate
+	mkdir -p controller/internal/api/zetapb
+	protoc \
+		--go_out=controller/internal/api/zetapb \
+		--go_opt=paths=source_relative \
+		--go-grpc_out=controller/internal/api/zetapb \
+		--go-grpc_opt=paths=source_relative \
+		-I proto proto/zeta.proto
 
 .PHONY: proto-lint
-proto-lint: ## Lint proto files
+proto-lint: ## Lint proto files (requires buf)
 	cd proto && buf lint
 
 # ── Frontend ───────────────────────────────────────────────────────────────────
