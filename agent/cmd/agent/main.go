@@ -172,6 +172,10 @@ func runSyncLoop(
 		}
 		backoff = time.Second
 
+		// streamCtx is cancelled when this stream attempt ends (disconnect or shutdown).
+		// It stops the per-stream goroutines before we close sendCh.
+		streamCtx, streamCancel := context.WithCancel(ctx)
+
 		// STUN loop: discover external endpoint every 30s and report to coordinator.
 		stunDone := make(chan struct{})
 		go func() {
@@ -181,7 +185,7 @@ func runSyncLoop(
 			reportEndpoint(sendCh, cfg)
 			for {
 				select {
-				case <-ctx.Done():
+				case <-streamCtx.Done():
 					return
 				case <-ticker.C:
 					reportEndpoint(sendCh, cfg)
@@ -197,7 +201,7 @@ func runSyncLoop(
 			defer ticker.Stop()
 			for {
 				select {
-				case <-ctx.Done():
+				case <-streamCtx.Done():
 					return
 				case <-ticker.C:
 					select {
@@ -208,27 +212,28 @@ func runSyncLoop(
 			}
 		}()
 
-		streamDone := false
-		for !streamDone {
+		for {
 			select {
 			case <-ctx.Done():
-				close(sendCh)
+				streamCancel()
 				<-stunDone
 				<-pingDone
+				close(sendCh)
 				return
 			case msg, ok := <-recvCh:
 				if !ok {
-					streamDone = true
-					break
+					// Stream disconnected — stop goroutines, then reconnect.
+					streamCancel()
+					<-stunDone
+					<-pingDone
+					close(sendCh)
+					goto reconnect
 				}
 				handleSyncResponse(msg, st, wgMgr, resolver, cfg)
 			}
 		}
 
-		close(sendCh)
-		<-stunDone
-		<-pingDone
-
+	reconnect:
 		if ctx.Err() != nil {
 			return
 		}
