@@ -1,0 +1,28 @@
+# Git
+.git/
+.github/
+
+# Build artifacts
+dist/
+controller/web/dist/
+
+# Frontend build cache (node_modules copied separately in Dockerfile)
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# Go caches
+*/vendor/
+
+# Dev artifacts
+*.db
+*.db-shm
+*.db-wal
+*.pem
+*.key
+*.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
