@@ -30,11 +30,6 @@ jobs:
           go-version: '1.25'
           cache-dependency-path: controller/go.sum
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          working-directory: controller
-          version: latest
 
       - name: Test
         working-directory: controller

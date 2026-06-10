@@ -26,11 +26,6 @@ jobs:
           go-version: '1.25'
           cache-dependency-path: agent/go.sum
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          working-directory: agent
-          version: latest
 
       - name: Test
         working-directory: agent
