@@ -1,6 +1,10 @@
 # Stage 1: Build the Go agent binary
-FROM golang:1.25-alpine AS builder
+# $BUILDPLATFORM pins the builder to the runner's native arch so Go cross-compiles
+# instead of running under QEMU emulation (which makes arm64/arm builds ~20x slower).
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 WORKDIR /src
+
+ARG TARGETARCH
 
 # Copy workspace files
 COPY go.work go.work.sum ./
@@ -15,7 +19,7 @@ COPY proto/ proto/
 COPY agent/ agent/
 COPY controller/ controller/
 
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -trimpath \
     -ldflags="-s -w" \
     -o /out/zeta-agent \

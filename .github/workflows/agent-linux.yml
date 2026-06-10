@@ -85,6 +85,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: agent/go.sum
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -106,6 +112,20 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
+
+      - name: Cross-compile binaries
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          for arch in amd64 arm64 arm; do
+            GOARCH=$arch go build -trimpath \
+              -ldflags="-s -w -X main.Version=$VERSION -X main.Commit=$COMMIT" \
+              -o dist/zeta-agent-linux-$arch \
+              ./agent/cmd/agent
+          done
 
       - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
