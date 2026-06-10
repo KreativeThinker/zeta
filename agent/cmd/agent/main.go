@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"net/http"
+	"strings"
 
 	"github.com/kreativethinker/zeta/agent/internal/agentapi"
 	"github.com/kreativethinker/zeta/agent/internal/config"
@@ -347,8 +348,13 @@ func handleSyncResponse(
 		nm := p.NetworkMap
 
 		// Build mesh-IP → pubkey and mesh-IP → hostname maps for proxy ACL/logging.
-		ipToPK := make(map[string]string, len(nm.Peers))
-		ipToHost := make(map[string]string, len(nm.Peers))
+		// Include self so the proxy can identify connections from the local mesh IP.
+		selfHostname := st.Domain
+		if idx := strings.Index(selfHostname, "."); idx != -1 {
+			selfHostname = selfHostname[:idx]
+		}
+		ipToPK := map[string]string{st.MeshIP: st.WGPublicKey}
+		ipToHost := map[string]string{st.MeshIP: selfHostname}
 		var peers []wg.PeerConfig
 		for _, peer := range nm.Peers {
 			if peer.NodeId == st.NodeID {
