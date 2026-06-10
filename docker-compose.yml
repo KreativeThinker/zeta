@@ -12,6 +12,7 @@ services:
       ZETA_HTTP_ADDR: ":8080"
       ZETA_GRPC_ADDR: ":50051"
       ZETA_MESH_DOMAIN: mesh
+      ZETA_ADMIN_PASSWORD: ${ZETA_ADMIN_PASSWORD:-}
       # ZETA_MESH_CIDR: "100.64.0.0/10"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/status"]
@@ -20,5 +21,30 @@ services:
       retries: 3
       start_period: 5s
 
+  # Agent running on this host — joins the mesh so the server itself
+  # is reachable at its mesh IP from other enrolled devices.
+  #
+  # First run: set ZETA_PREAUTH_KEY to a key generated from the dashboard.
+  # Subsequent runs: state is loaded from the volume; ZETA_PREAUTH_KEY is ignored.
+  #
+  # network_mode: host is required — WireGuard must live in the host network
+  # namespace so the mesh IP is assigned to the host, not just the container.
+  agent:
+    image: ghcr.io/kreativethinker/zeta/agent:main
+    restart: unless-stopped
+    network_mode: host
+    privileged: true          # needed for WireGuard + ip route
+    depends_on:
+      controller:
+        condition: service_healthy
+    volumes:
+      - agent-data:/var/lib/zeta
+    environment:
+      ZETA_COORDINATOR: "localhost:50051"
+    command:
+      - "--coordinator=localhost:50051"
+      - "--preauth-key=${ZETA_PREAUTH_KEY:-}"
+
 volumes:
   controller-data:
+  agent-data:
