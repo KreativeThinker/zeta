@@ -10,13 +10,8 @@ import (
 const DefaultSTUN = "stun.l.google.com:19302"
 
 // DiscoverEndpoint sends a STUN binding request to learn the external IP,
-// then returns "ip:wgPort". Prefers IPv4 so that peers without mutual IPv6
-// routing (e.g. Airtel → Hetzner) can still reach each other.
+// then returns "ip:wgPort".
 func DiscoverEndpoint(stunServer string, wgPort int) (string, error) {
-	// Try IPv4 first; fall back to whatever the OS prefers.
-	if addr, err := doSTUN(stunServer, "udp4", wgPort); err == nil {
-		return addr, nil
-	}
 	return doSTUN(stunServer, "udp", wgPort)
 }
 
