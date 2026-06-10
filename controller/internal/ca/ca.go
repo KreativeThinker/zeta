@@ -38,14 +38,33 @@ func (c *CA) CertPEM() []byte {
 	return c.certPEM
 }
 
-// IssueDeviceCert issues a 90-day TLS cert for a device.
-// The cert's CN is nodeID; SANs include the mesh IP and hostname.mesh DNS name.
-func (c *CA) IssueDeviceCert(nodeID, meshIP, hostname, meshDomain string) ([]byte, error) {
-	deviceKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("generating device key: %w", err)
+// IssueDeviceCert generates an ECDSA keypair for a device, signs a 90-day cert,
+// and returns both the cert PEM and private key PEM.
+// Phase 3 note: replace with a CSR flow so the private key never leaves the device.
+func (c *CA) IssueDeviceCert(nodeID, meshIP, hostname, meshDomain string) (certPEM, keyPEM []byte, err error) {
+	return c.issueDeviceCert(nodeID, meshIP, hostname, meshDomain)
+}
+
+func (c *CA) issueDeviceCert(nodeID, meshIP, hostname, meshDomain string) (certPEM, keyPEM []byte, err error) {
+	deviceKey, genErr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if genErr != nil {
+		return nil, nil, fmt.Errorf("generating device key: %w", genErr)
 	}
 
+	certPEM, signErr := c.signCert(nodeID, meshIP, hostname, meshDomain, deviceKey.Public())
+	if signErr != nil {
+		return nil, nil, signErr
+	}
+
+	keyDER, marshalErr := x509.MarshalECPrivateKey(deviceKey)
+	if marshalErr != nil {
+		return nil, nil, fmt.Errorf("marshalling device key: %w", marshalErr)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	return certPEM, keyPEM, nil
+}
+
+func (c *CA) signCert(nodeID, meshIP, hostname, meshDomain string, pubKey crypto.PublicKey) ([]byte, error) {
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
 		return nil, err
@@ -67,13 +86,16 @@ func (c *CA) IssueDeviceCert(nodeID, meshIP, hostname, meshDomain string) ([]byt
 		DNSNames:     []string{fmt.Sprintf("%s.%s", hostname, meshDomain)},
 	}
 
-	certDER, err := x509.CreateCertificate(rand.Reader, template, c.cert, deviceKey.Public(), c.key)
+	certDER, err := x509.CreateCertificate(rand.Reader, template, c.cert, pubKey, c.key)
 	if err != nil {
 		return nil, fmt.Errorf("signing device cert: %w", err)
 	}
 
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER}), nil
 }
+
+// unused import guard
+var _ = crypto.Hash(0)
 
 // ── loaders ───────────────────────────────────────────────────────────────────
 

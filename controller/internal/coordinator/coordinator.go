@@ -70,6 +70,7 @@ func (c *Coordinator) Enroll(req *zetapb.RegisterRequest) (*zetapb.NodeConfig, e
 			Domain:  fmt.Sprintf("%s.%s", existing.Hostname, c.cfg.Mesh.Domain),
 			CertPem: []byte(existing.CertPEM),
 			CaPem:   c.ca.CertPEM(),
+			KeyPem:  []byte(existing.KeyPEM),
 		}, nil
 	}
 
@@ -79,7 +80,7 @@ func (c *Coordinator) Enroll(req *zetapb.RegisterRequest) (*zetapb.NodeConfig, e
 	}
 
 	nodeID := uuid.NewString()
-	certPEM, err := c.ca.IssueDeviceCert(nodeID, meshIP, req.Hostname, c.cfg.Mesh.Domain)
+	certPEM, keyPEM, err := c.ca.IssueDeviceCert(nodeID, meshIP, req.Hostname, c.cfg.Mesh.Domain)
 	if err != nil {
 		return nil, fmt.Errorf("issuing device cert: %w", err)
 	}
@@ -91,6 +92,7 @@ func (c *Coordinator) Enroll(req *zetapb.RegisterRequest) (*zetapb.NodeConfig, e
 		WGPublicKey:  req.WgPublicKey,
 		MeshIP:       meshIP,
 		CertPEM:      string(certPEM),
+		KeyPEM:       string(keyPEM),
 		AgentVersion: req.AgentVersion,
 	}
 	if err := c.db.CreateDevice(dev); err != nil {
@@ -113,6 +115,7 @@ func (c *Coordinator) Enroll(req *zetapb.RegisterRequest) (*zetapb.NodeConfig, e
 		Domain:  fmt.Sprintf("%s.%s", req.Hostname, c.cfg.Mesh.Domain),
 		CertPem: certPEM,
 		CaPem:   c.ca.CertPEM(),
+		KeyPem:  keyPEM,
 	}, nil
 }
 

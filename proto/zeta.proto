@@ -37,7 +37,8 @@ message NodeConfig {
   string mesh_ip = 2;
   string domain = 3;
   bytes cert_pem = 4; // device certificate (PEM)
-  bytes ca_pem = 5; // coordinator CA root (PEM)
+  bytes ca_pem = 5;   // coordinator CA root (PEM)
+  bytes key_pem = 6;  // device private key (PEM); phase 3 will replace with CSR flow
 }
 
 // Sync Streams

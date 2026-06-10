@@ -140,6 +140,7 @@ func enroll(client *control.Client, preauthKey string) (*state.State, error) {
 		WGPrivateKey: privKey,
 		WGPublicKey:  pubKey,
 		CertPEM:      string(cfg.CertPem),
+		CertKeyPEM:   string(cfg.KeyPem),
 		CAPEM:        string(cfg.CaPem),
 	}, nil
 }

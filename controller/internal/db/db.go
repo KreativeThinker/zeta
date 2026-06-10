@@ -29,6 +29,7 @@ type Device struct {
 	WGPublicKey  string     `json:"wg_public_key"`
 	MeshIP       string     `json:"mesh_ip"`
 	CertPEM      string     `json:"-"`
+	KeyPEM       string     `json:"-"`
 	LastSeen     *time.Time `json:"last_seen"`
 	LastEndpoint string     `json:"last_endpoint"`
 	AgentVersion string     `json:"agent_version"`
@@ -106,9 +107,9 @@ func (d *DB) SetSetting(key, value string) error {
 
 func (d *DB) CreateDevice(dev Device) error {
 	_, err := d.conn.Exec(
-		`INSERT INTO devices(id, hostname, os, wg_public_key, mesh_ip, cert_pem, agent_version, created_at)
-		 VALUES(?,?,?,?,?,?,?,?)`,
-		dev.ID, dev.Hostname, dev.OS, dev.WGPublicKey, dev.MeshIP, dev.CertPEM,
+		`INSERT INTO devices(id, hostname, os, wg_public_key, mesh_ip, cert_pem, key_pem, agent_version, created_at)
+		 VALUES(?,?,?,?,?,?,?,?,?)`,
+		dev.ID, dev.Hostname, dev.OS, dev.WGPublicKey, dev.MeshIP, dev.CertPEM, dev.KeyPEM,
 		dev.AgentVersion, time.Now().UTC(),
 	)
 	return err
@@ -116,21 +117,21 @@ func (d *DB) CreateDevice(dev Device) error {
 
 func (d *DB) GetDevice(id string) (*Device, error) {
 	return scanDevice(d.conn.QueryRow(
-		`SELECT id, hostname, os, wg_public_key, mesh_ip, cert_pem, last_seen, last_endpoint, agent_version, created_at
+		`SELECT id, hostname, os, wg_public_key, mesh_ip, cert_pem, key_pem, last_seen, last_endpoint, agent_version, created_at
 		 FROM devices WHERE id = ?`, id,
 	))
 }
 
 func (d *DB) GetDeviceByPubKey(pubKey string) (*Device, error) {
 	return scanDevice(d.conn.QueryRow(
-		`SELECT id, hostname, os, wg_public_key, mesh_ip, cert_pem, last_seen, last_endpoint, agent_version, created_at
+		`SELECT id, hostname, os, wg_public_key, mesh_ip, cert_pem, key_pem, last_seen, last_endpoint, agent_version, created_at
 		 FROM devices WHERE wg_public_key = ?`, pubKey,
 	))
 }
 
 func (d *DB) ListDevices() ([]Device, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, hostname, os, wg_public_key, mesh_ip, cert_pem, last_seen, last_endpoint, agent_version, created_at
+		`SELECT id, hostname, os, wg_public_key, mesh_ip, cert_pem, key_pem, last_seen, last_endpoint, agent_version, created_at
 		 FROM devices ORDER BY created_at ASC`,
 	)
 	if err != nil {
@@ -392,13 +393,14 @@ type scanner interface {
 
 func scanDevice(row scanner) (*Device, error) {
 	var dev Device
-	var lastSeen    sql.NullTime
-	var certPEM     sql.NullString
-	var lastEndpt   sql.NullString
-	var agentVer    sql.NullString
+	var lastSeen  sql.NullTime
+	var certPEM   sql.NullString
+	var keyPEM    sql.NullString
+	var lastEndpt sql.NullString
+	var agentVer  sql.NullString
 	err := row.Scan(
 		&dev.ID, &dev.Hostname, &dev.OS, &dev.WGPublicKey, &dev.MeshIP,
-		&certPEM, &lastSeen, &lastEndpt, &agentVer, &dev.CreatedAt,
+		&certPEM, &keyPEM, &lastSeen, &lastEndpt, &agentVer, &dev.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -410,6 +412,7 @@ func scanDevice(row scanner) (*Device, error) {
 		dev.LastSeen = &lastSeen.Time
 	}
 	dev.CertPEM      = certPEM.String
+	dev.KeyPEM       = keyPEM.String
 	dev.LastEndpoint = lastEndpt.String
 	dev.AgentVersion = agentVer.String
 	return &dev, nil

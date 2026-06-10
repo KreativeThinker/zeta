@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS devices (
     wg_public_key TEXT UNIQUE NOT NULL,
     mesh_ip       TEXT UNIQUE NOT NULL,
     cert_pem      TEXT,
+    key_pem       TEXT,
     last_seen     DATETIME,
     last_endpoint TEXT,
     agent_version TEXT,

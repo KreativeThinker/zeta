@@ -15,6 +15,7 @@ type State struct {
 	WGPrivateKey string `json:"wg_private_key"`
 	WGPublicKey  string `json:"wg_public_key"`
 	CertPEM      string `json:"cert_pem"`
+	CertKeyPEM   string `json:"cert_key_pem"`
 	CAPEM        string `json:"ca_pem"`
 }
 

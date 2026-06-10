@@ -239,6 +239,7 @@ type NodeConfig struct {
 	Domain        string                 `protobuf:"bytes,3,opt,name=domain,proto3" json:"domain,omitempty"`
 	CertPem       []byte                 `protobuf:"bytes,4,opt,name=cert_pem,json=certPem,proto3" json:"cert_pem,omitempty"` // device certificate (PEM)
 	CaPem         []byte                 `protobuf:"bytes,5,opt,name=ca_pem,json=caPem,proto3" json:"ca_pem,omitempty"`       // coordinator CA root (PEM)
+	KeyPem        []byte                 `protobuf:"bytes,6,opt,name=key_pem,json=keyPem,proto3" json:"key_pem,omitempty"`    // device private key (PEM); phase 3 will replace with CSR flow
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -304,6 +305,13 @@ func (x *NodeConfig) GetCertPem() []byte {
 func (x *NodeConfig) GetCaPem() []byte {
 	if x != nil {
 		return x.CaPem
+	}
+	return nil
+}
+
+func (x *NodeConfig) GetKeyPem() []byte {
+	if x != nil {
+		return x.KeyPem
 	}
 	return nil
 }
@@ -1254,14 +1262,15 @@ const file_zeta_proto_rawDesc = "" +
 	"\vPendingAuth\x12\x19\n" +
 	"\bauth_url\x18\x01 \x01(\tR\aauthUrl\x12\x1f\n" +
 	"\vsession_key\x18\x02 \x01(\tR\n" +
-	"sessionKey\"\x88\x01\n" +
+	"sessionKey\"\xa1\x01\n" +
 	"\n" +
 	"NodeConfig\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x17\n" +
 	"\amesh_ip\x18\x02 \x01(\tR\x06meshIp\x12\x16\n" +
 	"\x06domain\x18\x03 \x01(\tR\x06domain\x12\x19\n" +
 	"\bcert_pem\x18\x04 \x01(\fR\acertPem\x12\x15\n" +
-	"\x06ca_pem\x18\x05 \x01(\fR\x05caPem\"\xaf\x01\n" +
+	"\x06ca_pem\x18\x05 \x01(\fR\x05caPem\x12\x17\n" +
+	"\akey_pem\x18\x06 \x01(\fR\x06keyPem\"\xaf\x01\n" +
 	"\n" +
 	"SyncUpdate\x125\n" +
 	"\bendpoint\x18\x01 \x01(\v2\x17.zeta.v1.EndpointUpdateH\x00R\bendpoint\x124\n" +
