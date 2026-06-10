@@ -9,9 +9,12 @@ import (
 
 const DefaultSTUN = "stun.l.google.com:19302"
 
-// DiscoverEndpoint sends a STUN binding request and returns the observed
-// external "ip:port" string. Returns "" on failure (non-fatal).
-func DiscoverEndpoint(stunServer string) (string, error) {
+// DiscoverEndpoint sends a STUN binding request to learn the external IP,
+// then returns "ip:wgPort". The wgPort is the WireGuard listen port — we use
+// our own port rather than the STUN-mapped port because the STUN client binds
+// an ephemeral socket (not the WireGuard socket), so the mapped port is
+// useless. Using the known listen port is correct for VPS and most cone NATs.
+func DiscoverEndpoint(stunServer string, wgPort int) (string, error) {
 	c, err := stun.Dial("udp", stunServer)
 	if err != nil {
 		return "", fmt.Errorf("dialing STUN server %s: %w", stunServer, err)
@@ -40,17 +43,14 @@ func DiscoverEndpoint(stunServer string) (string, error) {
 	}
 
 	var ip net.IP
-	var port int
 
 	if xorAddr.IP != nil {
 		ip = xorAddr.IP
-		port = xorAddr.Port
 	} else if mappedAddr.IP != nil {
 		ip = mappedAddr.IP
-		port = mappedAddr.Port
 	} else {
 		return "", fmt.Errorf("no address in STUN response")
 	}
 
-	return net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)), nil
+	return net.JoinHostPort(ip.String(), fmt.Sprintf("%d", wgPort)), nil
 }

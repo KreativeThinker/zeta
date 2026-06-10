@@ -249,7 +249,7 @@ func runSyncLoop(
 }
 
 func reportEndpoint(sendCh chan<- *zetapb.SyncUpdate, cfg *config.Config) {
-	endpoint, err := nat.DiscoverEndpoint(nat.DefaultSTUN)
+	endpoint, err := nat.DiscoverEndpoint(nat.DefaultSTUN, cfg.WireGuard.ListenPort)
 	if err != nil {
 		slog.Debug("STUN discovery failed", "err", err)
 		return
