@@ -34,9 +34,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /out/zeta-controller \
     ./controller/cmd/server
 
-# Stage 3: Minimal runtime image
-FROM scratch
-COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# Stage 3: Minimal runtime image (alpine for healthcheck + CA certs)
+FROM alpine:3.21
+RUN apk add --no-cache wget
 COPY --from=go-builder /out/zeta-controller /zeta-controller
 
 EXPOSE 8080 50051
