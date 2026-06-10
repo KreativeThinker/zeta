@@ -3,6 +3,7 @@ package wg
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
@@ -91,9 +92,13 @@ func (m *Manager) ApplyPeers(peers []PeerConfig) error {
 		if p.Endpoint != "" {
 			addr, err := net.ResolveUDPAddr("udp", p.Endpoint)
 			if err != nil {
-				return fmt.Errorf("resolving endpoint %q: %w", p.Endpoint, err)
+				// Bad endpoint format (e.g. bare IPv6 without brackets from an old
+				// agent). Skip it — the peer is still added, just without an endpoint,
+				// so it can receive inbound connections until a good endpoint arrives.
+				slog.Warn("skipping malformed peer endpoint", "endpoint", p.Endpoint, "err", err)
+			} else {
+				pc.Endpoint = addr
 			}
-			pc.Endpoint = addr
 		}
 
 		wgPeers = append(wgPeers, pc)
