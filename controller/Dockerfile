@@ -9,7 +9,7 @@ RUN cd frontend && npm run build
 # Output lands in /src/controller/web/dist (per svelte.config.js adapter path)
 
 # Stage 2: Build the Go controller binary
-FROM golang:1.26-alpine AS go-builder
+FROM golang:1.25-alpine AS go-builder
 WORKDIR /src
 
 # Copy workspace files

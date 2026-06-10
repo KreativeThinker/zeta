@@ -6,7 +6,7 @@ bin/
 
 # Go
 */vendor/
-go.work.sum
+# go.work.sum intentionally tracked (needed by Docker build)
 
 # Frontend
 frontend/node_modules/

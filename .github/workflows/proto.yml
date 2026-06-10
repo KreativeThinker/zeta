@@ -1,5 +1,8 @@
 name: Proto
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [main]
@@ -16,7 +19,7 @@ jobs:
     name: Lint & Breaking Change Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install buf
         uses: bufbuild/buf-action@v1
@@ -32,7 +35,7 @@ jobs:
     name: Generate & Verify No Drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
         uses: actions/setup-go@v5
