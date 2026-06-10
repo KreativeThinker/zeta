@@ -108,6 +108,12 @@ func main() {
 	resolver := dns.New(cfg.DNS.ListenAddr, cfg.DNS.Upstream)
 	if err := resolver.Start(); err != nil {
 		slog.Warn("starting DNS resolver", "err", err)
+	} else {
+		teardownDNS, err := dns.SetupSystemDNS(cfg.DNS.ListenAddr, cfg.WireGuard.Interface, "mesh")
+		if err != nil {
+			slog.Warn("configuring system DNS", "err", err)
+		}
+		defer teardownDNS()
 	}
 	defer resolver.Stop()
 
