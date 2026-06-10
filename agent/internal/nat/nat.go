@@ -10,12 +10,18 @@ import (
 const DefaultSTUN = "stun.l.google.com:19302"
 
 // DiscoverEndpoint sends a STUN binding request to learn the external IP,
-// then returns "ip:wgPort". The wgPort is the WireGuard listen port — we use
-// our own port rather than the STUN-mapped port because the STUN client binds
-// an ephemeral socket (not the WireGuard socket), so the mapped port is
-// useless. Using the known listen port is correct for VPS and most cone NATs.
+// then returns "ip:wgPort". Prefers IPv4 so that peers without mutual IPv6
+// routing (e.g. Airtel → Hetzner) can still reach each other.
 func DiscoverEndpoint(stunServer string, wgPort int) (string, error) {
-	c, err := stun.Dial("udp", stunServer)
+	// Try IPv4 first; fall back to whatever the OS prefers.
+	if addr, err := doSTUN(stunServer, "udp4", wgPort); err == nil {
+		return addr, nil
+	}
+	return doSTUN(stunServer, "udp", wgPort)
+}
+
+func doSTUN(stunServer, network string, wgPort int) (string, error) {
+	c, err := stun.Dial(network, stunServer)
 	if err != nil {
 		return "", fmt.Errorf("dialing STUN server %s: %w", stunServer, err)
 	}
@@ -23,6 +29,7 @@ func DiscoverEndpoint(stunServer string, wgPort int) (string, error) {
 
 	var xorAddr stun.XORMappedAddress
 	var mappedAddr stun.MappedAddress
+	var eventErr error
 
 	msg, err := stun.Build(stun.TransactionID, stun.BindingRequest)
 	if err != nil {
@@ -31,7 +38,7 @@ func DiscoverEndpoint(stunServer string, wgPort int) (string, error) {
 
 	if err := c.Do(msg, func(res stun.Event) {
 		if res.Error != nil {
-			err = res.Error
+			eventErr = res.Error
 			return
 		}
 		if getErr := xorAddr.GetFrom(res.Message); getErr == nil {
@@ -41,9 +48,11 @@ func DiscoverEndpoint(stunServer string, wgPort int) (string, error) {
 	}); err != nil {
 		return "", fmt.Errorf("STUN transaction: %w", err)
 	}
+	if eventErr != nil {
+		return "", fmt.Errorf("STUN event: %w", eventErr)
+	}
 
 	var ip net.IP
-
 	if xorAddr.IP != nil {
 		ip = xorAddr.IP
 	} else if mappedAddr.IP != nil {

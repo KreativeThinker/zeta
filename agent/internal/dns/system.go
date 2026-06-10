@@ -35,18 +35,24 @@ func SetupSystemDNS(listenAddr, iface, domain string) (teardown func(), err erro
 }
 
 // useResolvectl tries to configure DNS via systemd-resolved. Returns true on success.
+// Both the DNS server AND the routing domain must be set — without the routing
+// domain, 127.0.0.1 becomes a generic fallback for all queries, which breaks
+// non-mesh DNS resolution (e.g. STUN servers resolving to IPv6 via 1.1.1.1).
 func useResolvectl(ip, iface, domain string) bool {
 	if _, err := exec.LookPath("resolvectl"); err != nil {
 		return false
 	}
-	// Set per-interface DNS server.
+	// Clear any stale config from a previous agent crash (teardown never ran).
+	_ = exec.Command("resolvectl", "revert", iface).Run()
+
 	if err := exec.Command("resolvectl", "dns", iface, ip).Run(); err != nil {
 		return false
 	}
-	// Route the mesh domain to this interface.
 	if err := exec.Command("resolvectl", "domain", iface, "~"+domain).Run(); err != nil {
-		// Non-fatal — DNS will still work, just not scoped to the domain.
-		slog.Warn("DNS: resolvectl domain failed", "err", err)
+		// Roll back the DNS setting so 127.0.0.1 is not left as a generic fallback.
+		_ = exec.Command("resolvectl", "dns", iface, "").Run()
+		slog.Warn("DNS: resolvectl domain failed, reverting", "err", err)
+		return false
 	}
 	return true
 }
