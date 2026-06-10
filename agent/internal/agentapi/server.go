@@ -47,9 +47,14 @@ func New(
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	// Domain is "hostname.mesh" — extract just the hostname part.
+	hostname := s.st.Domain
+	if idx := strings.Index(hostname, "."); idx != -1 {
+		hostname = hostname[:idx]
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"node_id":  s.st.NodeID,
-		"hostname": s.st.Domain, // Domain is set to "hostname.mesh" at enroll
+		"hostname": hostname,
 		"mesh_ip":  s.st.MeshIP,
 	})
 }

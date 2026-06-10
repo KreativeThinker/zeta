@@ -48,7 +48,7 @@
       try {
         const r = await fetch('/api/status');
         const s = await r.json();
-        document.getElementById('agent-hostname').textContent = (s.hostname || '').split('.')[0] || 'agent';
+        document.getElementById('agent-hostname').textContent = s.hostname || 'agent';
         document.getElementById('mesh-ip').textContent = s.mesh_ip || '';
       } catch {}
     }
