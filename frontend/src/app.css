@@ -162,7 +162,8 @@ thead th {
   letter-spacing: 0.06em;
   color: var(--text);
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--text);
+  color: var(--bg)
 }
 tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
 tbody tr:last-child { border-bottom: none; }
