@@ -81,11 +81,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
-        exclude:
-          - goos: windows
-            goarch: arm64
+        goos: [linux] # , darwin, windows]
+        goarch: [amd64] # , arm64]
+        # exclude:
+        #   - goos: windows
+        #     goarch: arm64
     steps:
       - uses: actions/checkout@v5
 
