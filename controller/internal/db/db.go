@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,7 +78,27 @@ func Open(path string) (*DB, error) {
 	if _, err := conn.Exec(schema); err != nil {
 		return nil, fmt.Errorf("applying schema: %w", err)
 	}
+	if err := migrate(conn); err != nil {
+		return nil, fmt.Errorf("migrating db: %w", err)
+	}
 	return &DB{conn: conn}, nil
+}
+
+// migrate applies additive schema changes that CREATE TABLE IF NOT EXISTS cannot handle.
+func migrate(conn *sql.DB) error {
+	migrations := []string{
+		`ALTER TABLE devices ADD COLUMN key_pem TEXT`,
+	}
+	for _, m := range migrations {
+		if _, err := conn.Exec(m); err != nil {
+			// SQLite returns an error when the column already exists; ignore it.
+			if !strings.Contains(err.Error(), "duplicate column name") &&
+				!strings.Contains(err.Error(), "already exists") {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (d *DB) Close() error {

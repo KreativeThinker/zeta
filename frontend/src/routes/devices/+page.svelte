@@ -9,12 +9,20 @@
 
 	let devices = $state<Device[]>([]);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 	let deleting = $state<string | null>(null);
 
 	async function load() {
-		const d = await fetch('/api/v1/devices').then(r => r.json());
-		devices = d;
-		loading = false;
+		try {
+			const r = await fetch('/api/v1/devices');
+			if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+			devices = await r.json();
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			loading = false;
+		}
 	}
 
 	onMount(() => {
@@ -59,6 +67,8 @@
 
 {#if loading}
 	<div class="loading">Loading…</div>
+{:else if error}
+	<div class="table-wrap"><div class="empty"><div class="empty-icon">⚠️</div><p>API error: {error}</p></div></div>
 {:else if devices.length === 0}
 	<div class="table-wrap">
 		<div class="empty">

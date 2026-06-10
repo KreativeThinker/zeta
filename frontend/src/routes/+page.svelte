@@ -10,15 +10,22 @@
 	let status = $state<Status | null>(null);
 	let devices = $state<Device[]>([]);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	async function load() {
-		const [s, d] = await Promise.all([
-			fetch('/api/v1/status').then(r => r.json()),
-			fetch('/api/v1/devices').then(r => r.json()),
-		]);
-		status = s;
-		devices = d;
-		loading = false;
+		try {
+			const [s, d] = await Promise.all([
+				fetch('/api/v1/status').then(r => r.ok ? r.json() : r.json().then((e: {error:string}) => { throw new Error(e.error); })),
+				fetch('/api/v1/devices').then(r => r.ok ? r.json() : r.json().then((e: {error:string}) => { throw new Error(e.error); })),
+			]);
+			status = s;
+			devices = d;
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			loading = false;
+		}
 	}
 
 	onMount(() => {
@@ -49,6 +56,8 @@
 
 {#if loading}
 	<div class="loading">Loading…</div>
+{:else if error}
+	<div class="table-wrap"><div class="empty"><div class="empty-icon">⚠️</div><p>API error: {error}</p></div></div>
 {:else}
 	<div class="stats-grid">
 		<div class="stat-card">
