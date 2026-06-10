@@ -376,7 +376,7 @@ func (x *SyncUpdate) GetEndpoint() *EndpointUpdate {
 	return nil
 }
 
-func (x *SyncUpdate) GetServices() *ServiceUpdate {
+func (x *SyncUpdate) GetServices() *ServiceAnnounce {
 	if x != nil {
 		if x, ok := x.Payload.(*SyncUpdate_Services); ok {
 			return x.Services
@@ -403,7 +403,7 @@ type SyncUpdate_Endpoint struct {
 }
 
 type SyncUpdate_Services struct {
-	Services *ServiceUpdate `protobuf:"bytes,2,opt,name=services,proto3,oneof"`
+	Services *ServiceAnnounce `protobuf:"bytes,2,opt,name=services,proto3,oneof"`
 }
 
 type SyncUpdate_Ping struct {
@@ -468,28 +468,30 @@ func (x *EndpointUpdate) GetEndpoint() string {
 	return ""
 }
 
-type ServiceUpdate struct {
+// ServiceAnnounce is sent by the agent to declare which services it exposes.
+// allowed_hostnames uses "user:<hostname>" syntax, e.g. "user:graveyard".
+// The coordinator resolves hostnames to WireGuard public keys for ACL enforcement.
+type ServiceAnnounce struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	Services      []*Service             `protobuf:"bytes,2,rep,name=services,proto3" json:"services,omitempty"`
+	Services      []*ServiceDecl         `protobuf:"bytes,1,rep,name=services,proto3" json:"services,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ServiceUpdate) Reset() {
-	*x = ServiceUpdate{}
+func (x *ServiceAnnounce) Reset() {
+	*x = ServiceAnnounce{}
 	mi := &file_zeta_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ServiceUpdate) String() string {
+func (x *ServiceAnnounce) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ServiceUpdate) ProtoMessage() {}
+func (*ServiceAnnounce) ProtoMessage() {}
 
-func (x *ServiceUpdate) ProtoReflect() protoreflect.Message {
+func (x *ServiceAnnounce) ProtoReflect() protoreflect.Message {
 	mi := &file_zeta_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -501,21 +503,82 @@ func (x *ServiceUpdate) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ServiceUpdate.ProtoReflect.Descriptor instead.
-func (*ServiceUpdate) Descriptor() ([]byte, []int) {
+// Deprecated: Use ServiceAnnounce.ProtoReflect.Descriptor instead.
+func (*ServiceAnnounce) Descriptor() ([]byte, []int) {
 	return file_zeta_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *ServiceUpdate) GetNodeId() string {
+func (x *ServiceAnnounce) GetServices() []*ServiceDecl {
 	if x != nil {
-		return x.NodeId
+		return x.Services
+	}
+	return nil
+}
+
+type ServiceDecl struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Name             string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Port             uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	TargetAddr       string                 `protobuf:"bytes,3,opt,name=target_addr,json=targetAddr,proto3" json:"target_addr,omitempty"`                   // local address to proxy to, e.g. "172.17.0.2:3000"
+	AllowedHostnames []string               `protobuf:"bytes,4,rep,name=allowed_hostnames,json=allowedHostnames,proto3" json:"allowed_hostnames,omitempty"` // ["user:graveyard", "user:shire"]
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ServiceDecl) Reset() {
+	*x = ServiceDecl{}
+	mi := &file_zeta_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceDecl) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceDecl) ProtoMessage() {}
+
+func (x *ServiceDecl) ProtoReflect() protoreflect.Message {
+	mi := &file_zeta_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceDecl.ProtoReflect.Descriptor instead.
+func (*ServiceDecl) Descriptor() ([]byte, []int) {
+	return file_zeta_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ServiceDecl) GetName() string {
+	if x != nil {
+		return x.Name
 	}
 	return ""
 }
 
-func (x *ServiceUpdate) GetServices() []*Service {
+func (x *ServiceDecl) GetPort() uint32 {
 	if x != nil {
-		return x.Services
+		return x.Port
+	}
+	return 0
+}
+
+func (x *ServiceDecl) GetTargetAddr() string {
+	if x != nil {
+		return x.TargetAddr
+	}
+	return ""
+}
+
+func (x *ServiceDecl) GetAllowedHostnames() []string {
+	if x != nil {
+		return x.AllowedHostnames
 	}
 	return nil
 }
@@ -529,7 +592,7 @@ type PingUpdate struct {
 
 func (x *PingUpdate) Reset() {
 	*x = PingUpdate{}
-	mi := &file_zeta_proto_msgTypes[7]
+	mi := &file_zeta_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -541,7 +604,7 @@ func (x *PingUpdate) String() string {
 func (*PingUpdate) ProtoMessage() {}
 
 func (x *PingUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[7]
+	mi := &file_zeta_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -554,7 +617,7 @@ func (x *PingUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingUpdate.ProtoReflect.Descriptor instead.
 func (*PingUpdate) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{7}
+	return file_zeta_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *PingUpdate) GetNodeId() string {
@@ -579,7 +642,7 @@ type SyncResponse struct {
 
 func (x *SyncResponse) Reset() {
 	*x = SyncResponse{}
-	mi := &file_zeta_proto_msgTypes[8]
+	mi := &file_zeta_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -591,7 +654,7 @@ func (x *SyncResponse) String() string {
 func (*SyncResponse) ProtoMessage() {}
 
 func (x *SyncResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[8]
+	mi := &file_zeta_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -604,7 +667,7 @@ func (x *SyncResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncResponse.ProtoReflect.Descriptor instead.
 func (*SyncResponse) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{8}
+	return file_zeta_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SyncResponse) GetPayload() isSyncResponse_Payload {
@@ -675,7 +738,7 @@ type NetworkMap struct {
 
 func (x *NetworkMap) Reset() {
 	*x = NetworkMap{}
-	mi := &file_zeta_proto_msgTypes[9]
+	mi := &file_zeta_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -687,7 +750,7 @@ func (x *NetworkMap) String() string {
 func (*NetworkMap) ProtoMessage() {}
 
 func (x *NetworkMap) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[9]
+	mi := &file_zeta_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -700,7 +763,7 @@ func (x *NetworkMap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMap.ProtoReflect.Descriptor instead.
 func (*NetworkMap) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{9}
+	return file_zeta_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *NetworkMap) GetPeers() []*Peer {
@@ -740,7 +803,7 @@ type Peer struct {
 
 func (x *Peer) Reset() {
 	*x = Peer{}
-	mi := &file_zeta_proto_msgTypes[10]
+	mi := &file_zeta_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -752,7 +815,7 @@ func (x *Peer) String() string {
 func (*Peer) ProtoMessage() {}
 
 func (x *Peer) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[10]
+	mi := &file_zeta_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -765,7 +828,7 @@ func (x *Peer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Peer.ProtoReflect.Descriptor instead.
 func (*Peer) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{10}
+	return file_zeta_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Peer) GetNodeId() string {
@@ -824,18 +887,20 @@ func (x *Peer) GetOnline() bool {
 	return false
 }
 
+// Service is included in each Peer in the NetworkMap.
+// allowed_pubkeys is the list of WireGuard public keys permitted to connect.
 type Service struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	AllowedUsers  []string               `protobuf:"bytes,3,rep,name=allowed_users,json=allowedUsers,proto3" json:"allowed_users,omitempty"` // user IDs; empty = node-owner only
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Port           uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	AllowedPubkeys []string               `protobuf:"bytes,3,rep,name=allowed_pubkeys,json=allowedPubkeys,proto3" json:"allowed_pubkeys,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Service) Reset() {
 	*x = Service{}
-	mi := &file_zeta_proto_msgTypes[11]
+	mi := &file_zeta_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -847,7 +912,7 @@ func (x *Service) String() string {
 func (*Service) ProtoMessage() {}
 
 func (x *Service) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[11]
+	mi := &file_zeta_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -860,7 +925,7 @@ func (x *Service) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Service.ProtoReflect.Descriptor instead.
 func (*Service) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{11}
+	return file_zeta_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Service) GetName() string {
@@ -877,9 +942,9 @@ func (x *Service) GetPort() uint32 {
 	return 0
 }
 
-func (x *Service) GetAllowedUsers() []string {
+func (x *Service) GetAllowedPubkeys() []string {
 	if x != nil {
-		return x.AllowedUsers
+		return x.AllowedPubkeys
 	}
 	return nil
 }
@@ -894,7 +959,7 @@ type DNSConfig struct {
 
 func (x *DNSConfig) Reset() {
 	*x = DNSConfig{}
-	mi := &file_zeta_proto_msgTypes[12]
+	mi := &file_zeta_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -906,7 +971,7 @@ func (x *DNSConfig) String() string {
 func (*DNSConfig) ProtoMessage() {}
 
 func (x *DNSConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[12]
+	mi := &file_zeta_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -919,7 +984,7 @@ func (x *DNSConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DNSConfig.ProtoReflect.Descriptor instead.
 func (*DNSConfig) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{12}
+	return file_zeta_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DNSConfig) GetMeshDomain() string {
@@ -945,7 +1010,7 @@ type RelayMap struct {
 
 func (x *RelayMap) Reset() {
 	*x = RelayMap{}
-	mi := &file_zeta_proto_msgTypes[13]
+	mi := &file_zeta_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -957,7 +1022,7 @@ func (x *RelayMap) String() string {
 func (*RelayMap) ProtoMessage() {}
 
 func (x *RelayMap) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[13]
+	mi := &file_zeta_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -970,7 +1035,7 @@ func (x *RelayMap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayMap.ProtoReflect.Descriptor instead.
 func (*RelayMap) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{13}
+	return file_zeta_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RelayMap) GetServers() []*RelayServer {
@@ -992,7 +1057,7 @@ type RelayServer struct {
 
 func (x *RelayServer) Reset() {
 	*x = RelayServer{}
-	mi := &file_zeta_proto_msgTypes[14]
+	mi := &file_zeta_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +1069,7 @@ func (x *RelayServer) String() string {
 func (*RelayServer) ProtoMessage() {}
 
 func (x *RelayServer) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[14]
+	mi := &file_zeta_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +1082,7 @@ func (x *RelayServer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayServer.ProtoReflect.Descriptor instead.
 func (*RelayServer) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{14}
+	return file_zeta_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RelayServer) GetId() string {
@@ -1059,7 +1124,7 @@ type RelayOffer struct {
 
 func (x *RelayOffer) Reset() {
 	*x = RelayOffer{}
-	mi := &file_zeta_proto_msgTypes[15]
+	mi := &file_zeta_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1071,7 +1136,7 @@ func (x *RelayOffer) String() string {
 func (*RelayOffer) ProtoMessage() {}
 
 func (x *RelayOffer) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[15]
+	mi := &file_zeta_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1084,7 +1149,7 @@ func (x *RelayOffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayOffer.ProtoReflect.Descriptor instead.
 func (*RelayOffer) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{15}
+	return file_zeta_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RelayOffer) GetFromNodeId() string {
@@ -1112,7 +1177,7 @@ type ICESignal struct {
 
 func (x *ICESignal) Reset() {
 	*x = ICESignal{}
-	mi := &file_zeta_proto_msgTypes[16]
+	mi := &file_zeta_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1124,7 +1189,7 @@ func (x *ICESignal) String() string {
 func (*ICESignal) ProtoMessage() {}
 
 func (x *ICESignal) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[16]
+	mi := &file_zeta_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1137,7 +1202,7 @@ func (x *ICESignal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ICESignal.ProtoReflect.Descriptor instead.
 func (*ICESignal) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{16}
+	return file_zeta_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ICESignal) GetFromNodeId() string {
@@ -1171,7 +1236,7 @@ type ServerKeyResponse struct {
 
 func (x *ServerKeyResponse) Reset() {
 	*x = ServerKeyResponse{}
-	mi := &file_zeta_proto_msgTypes[17]
+	mi := &file_zeta_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1183,7 +1248,7 @@ func (x *ServerKeyResponse) String() string {
 func (*ServerKeyResponse) ProtoMessage() {}
 
 func (x *ServerKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[17]
+	mi := &file_zeta_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1196,7 +1261,7 @@ func (x *ServerKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerKeyResponse.ProtoReflect.Descriptor instead.
 func (*ServerKeyResponse) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{17}
+	return file_zeta_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ServerKeyResponse) GetPublicKey() string {
@@ -1214,7 +1279,7 @@ type Empty struct {
 
 func (x *Empty) Reset() {
 	*x = Empty{}
-	mi := &file_zeta_proto_msgTypes[18]
+	mi := &file_zeta_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1226,7 +1291,7 @@ func (x *Empty) String() string {
 func (*Empty) ProtoMessage() {}
 
 func (x *Empty) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[18]
+	mi := &file_zeta_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1239,7 +1304,7 @@ func (x *Empty) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Empty.ProtoReflect.Descriptor instead.
 func (*Empty) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{18}
+	return file_zeta_proto_rawDescGZIP(), []int{19}
 }
 
 var File_zeta_proto protoreflect.FileDescriptor
@@ -1270,19 +1335,24 @@ const file_zeta_proto_rawDesc = "" +
 	"\x06domain\x18\x03 \x01(\tR\x06domain\x12\x19\n" +
 	"\bcert_pem\x18\x04 \x01(\fR\acertPem\x12\x15\n" +
 	"\x06ca_pem\x18\x05 \x01(\fR\x05caPem\x12\x17\n" +
-	"\akey_pem\x18\x06 \x01(\fR\x06keyPem\"\xaf\x01\n" +
+	"\akey_pem\x18\x06 \x01(\fR\x06keyPem\"\xb1\x01\n" +
 	"\n" +
 	"SyncUpdate\x125\n" +
-	"\bendpoint\x18\x01 \x01(\v2\x17.zeta.v1.EndpointUpdateH\x00R\bendpoint\x124\n" +
-	"\bservices\x18\x02 \x01(\v2\x16.zeta.v1.ServiceUpdateH\x00R\bservices\x12)\n" +
+	"\bendpoint\x18\x01 \x01(\v2\x17.zeta.v1.EndpointUpdateH\x00R\bendpoint\x126\n" +
+	"\bservices\x18\x02 \x01(\v2\x18.zeta.v1.ServiceAnnounceH\x00R\bservices\x12)\n" +
 	"\x04ping\x18\x03 \x01(\v2\x13.zeta.v1.PingUpdateH\x00R\x04pingB\t\n" +
 	"\apayload\"E\n" +
 	"\x0eEndpointUpdate\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1a\n" +
-	"\bendpoint\x18\x02 \x01(\tR\bendpoint\"V\n" +
-	"\rServiceUpdate\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12,\n" +
-	"\bservices\x18\x02 \x03(\v2\x10.zeta.v1.ServiceR\bservices\"%\n" +
+	"\bendpoint\x18\x02 \x01(\tR\bendpoint\"C\n" +
+	"\x0fServiceAnnounce\x120\n" +
+	"\bservices\x18\x01 \x03(\v2\x14.zeta.v1.ServiceDeclR\bservices\"\x83\x01\n" +
+	"\vServiceDecl\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1f\n" +
+	"\vtarget_addr\x18\x03 \x01(\tR\n" +
+	"targetAddr\x12+\n" +
+	"\x11allowed_hostnames\x18\x04 \x03(\tR\x10allowedHostnames\"%\n" +
 	"\n" +
 	"PingUpdate\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\xb3\x01\n" +
@@ -1306,11 +1376,11 @@ const file_zeta_proto_rawDesc = "" +
 	"\auser_id\x18\x05 \x01(\tR\x06userId\x12\x1a\n" +
 	"\bendpoint\x18\x06 \x01(\tR\bendpoint\x12,\n" +
 	"\bservices\x18\a \x03(\v2\x10.zeta.v1.ServiceR\bservices\x12\x16\n" +
-	"\x06online\x18\b \x01(\bR\x06online\"V\n" +
+	"\x06online\x18\b \x01(\bR\x06online\"Z\n" +
 	"\aService\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12#\n" +
-	"\rallowed_users\x18\x03 \x03(\tR\fallowedUsers\"K\n" +
+	"\x04port\x18\x02 \x01(\rR\x04port\x12'\n" +
+	"\x0fallowed_pubkeys\x18\x03 \x03(\tR\x0eallowedPubkeys\"K\n" +
 	"\tDNSConfig\x12\x1f\n" +
 	"\vmesh_domain\x18\x01 \x01(\tR\n" +
 	"meshDomain\x12\x1d\n" +
@@ -1356,7 +1426,7 @@ func file_zeta_proto_rawDescGZIP() []byte {
 	return file_zeta_proto_rawDescData
 }
 
-var file_zeta_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_zeta_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_zeta_proto_goTypes = []any{
 	(*RegisterRequest)(nil),   // 0: zeta.v1.RegisterRequest
 	(*RegisterResponse)(nil),  // 1: zeta.v1.RegisterResponse
@@ -1364,41 +1434,42 @@ var file_zeta_proto_goTypes = []any{
 	(*NodeConfig)(nil),        // 3: zeta.v1.NodeConfig
 	(*SyncUpdate)(nil),        // 4: zeta.v1.SyncUpdate
 	(*EndpointUpdate)(nil),    // 5: zeta.v1.EndpointUpdate
-	(*ServiceUpdate)(nil),     // 6: zeta.v1.ServiceUpdate
-	(*PingUpdate)(nil),        // 7: zeta.v1.PingUpdate
-	(*SyncResponse)(nil),      // 8: zeta.v1.SyncResponse
-	(*NetworkMap)(nil),        // 9: zeta.v1.NetworkMap
-	(*Peer)(nil),              // 10: zeta.v1.Peer
-	(*Service)(nil),           // 11: zeta.v1.Service
-	(*DNSConfig)(nil),         // 12: zeta.v1.DNSConfig
-	(*RelayMap)(nil),          // 13: zeta.v1.RelayMap
-	(*RelayServer)(nil),       // 14: zeta.v1.RelayServer
-	(*RelayOffer)(nil),        // 15: zeta.v1.RelayOffer
-	(*ICESignal)(nil),         // 16: zeta.v1.ICESignal
-	(*ServerKeyResponse)(nil), // 17: zeta.v1.ServerKeyResponse
-	(*Empty)(nil),             // 18: zeta.v1.Empty
+	(*ServiceAnnounce)(nil),   // 6: zeta.v1.ServiceAnnounce
+	(*ServiceDecl)(nil),       // 7: zeta.v1.ServiceDecl
+	(*PingUpdate)(nil),        // 8: zeta.v1.PingUpdate
+	(*SyncResponse)(nil),      // 9: zeta.v1.SyncResponse
+	(*NetworkMap)(nil),        // 10: zeta.v1.NetworkMap
+	(*Peer)(nil),              // 11: zeta.v1.Peer
+	(*Service)(nil),           // 12: zeta.v1.Service
+	(*DNSConfig)(nil),         // 13: zeta.v1.DNSConfig
+	(*RelayMap)(nil),          // 14: zeta.v1.RelayMap
+	(*RelayServer)(nil),       // 15: zeta.v1.RelayServer
+	(*RelayOffer)(nil),        // 16: zeta.v1.RelayOffer
+	(*ICESignal)(nil),         // 17: zeta.v1.ICESignal
+	(*ServerKeyResponse)(nil), // 18: zeta.v1.ServerKeyResponse
+	(*Empty)(nil),             // 19: zeta.v1.Empty
 }
 var file_zeta_proto_depIdxs = []int32{
 	2,  // 0: zeta.v1.RegisterResponse.pending:type_name -> zeta.v1.PendingAuth
 	3,  // 1: zeta.v1.RegisterResponse.config:type_name -> zeta.v1.NodeConfig
 	5,  // 2: zeta.v1.SyncUpdate.endpoint:type_name -> zeta.v1.EndpointUpdate
-	6,  // 3: zeta.v1.SyncUpdate.services:type_name -> zeta.v1.ServiceUpdate
-	7,  // 4: zeta.v1.SyncUpdate.ping:type_name -> zeta.v1.PingUpdate
-	11, // 5: zeta.v1.ServiceUpdate.services:type_name -> zeta.v1.Service
-	9,  // 6: zeta.v1.SyncResponse.network_map:type_name -> zeta.v1.NetworkMap
-	15, // 7: zeta.v1.SyncResponse.relay:type_name -> zeta.v1.RelayOffer
-	16, // 8: zeta.v1.SyncResponse.ice_signal:type_name -> zeta.v1.ICESignal
-	10, // 9: zeta.v1.NetworkMap.peers:type_name -> zeta.v1.Peer
-	12, // 10: zeta.v1.NetworkMap.dns:type_name -> zeta.v1.DNSConfig
-	13, // 11: zeta.v1.NetworkMap.relay_map:type_name -> zeta.v1.RelayMap
-	11, // 12: zeta.v1.Peer.services:type_name -> zeta.v1.Service
-	14, // 13: zeta.v1.RelayMap.servers:type_name -> zeta.v1.RelayServer
-	18, // 14: zeta.v1.CoordinatorService.GetServerKey:input_type -> zeta.v1.Empty
+	6,  // 3: zeta.v1.SyncUpdate.services:type_name -> zeta.v1.ServiceAnnounce
+	8,  // 4: zeta.v1.SyncUpdate.ping:type_name -> zeta.v1.PingUpdate
+	7,  // 5: zeta.v1.ServiceAnnounce.services:type_name -> zeta.v1.ServiceDecl
+	10, // 6: zeta.v1.SyncResponse.network_map:type_name -> zeta.v1.NetworkMap
+	16, // 7: zeta.v1.SyncResponse.relay:type_name -> zeta.v1.RelayOffer
+	17, // 8: zeta.v1.SyncResponse.ice_signal:type_name -> zeta.v1.ICESignal
+	11, // 9: zeta.v1.NetworkMap.peers:type_name -> zeta.v1.Peer
+	13, // 10: zeta.v1.NetworkMap.dns:type_name -> zeta.v1.DNSConfig
+	14, // 11: zeta.v1.NetworkMap.relay_map:type_name -> zeta.v1.RelayMap
+	12, // 12: zeta.v1.Peer.services:type_name -> zeta.v1.Service
+	15, // 13: zeta.v1.RelayMap.servers:type_name -> zeta.v1.RelayServer
+	19, // 14: zeta.v1.CoordinatorService.GetServerKey:input_type -> zeta.v1.Empty
 	0,  // 15: zeta.v1.CoordinatorService.Register:input_type -> zeta.v1.RegisterRequest
 	4,  // 16: zeta.v1.CoordinatorService.Sync:input_type -> zeta.v1.SyncUpdate
-	17, // 17: zeta.v1.CoordinatorService.GetServerKey:output_type -> zeta.v1.ServerKeyResponse
+	18, // 17: zeta.v1.CoordinatorService.GetServerKey:output_type -> zeta.v1.ServerKeyResponse
 	1,  // 18: zeta.v1.CoordinatorService.Register:output_type -> zeta.v1.RegisterResponse
-	8,  // 19: zeta.v1.CoordinatorService.Sync:output_type -> zeta.v1.SyncResponse
+	9,  // 19: zeta.v1.CoordinatorService.Sync:output_type -> zeta.v1.SyncResponse
 	17, // [17:20] is the sub-list for method output_type
 	14, // [14:17] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name
@@ -1420,7 +1491,7 @@ func file_zeta_proto_init() {
 		(*SyncUpdate_Services)(nil),
 		(*SyncUpdate_Ping)(nil),
 	}
-	file_zeta_proto_msgTypes[8].OneofWrappers = []any{
+	file_zeta_proto_msgTypes[9].OneofWrappers = []any{
 		(*SyncResponse_NetworkMap)(nil),
 		(*SyncResponse_Relay)(nil),
 		(*SyncResponse_IceSignal)(nil),
@@ -1431,7 +1502,7 @@ func file_zeta_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_zeta_proto_rawDesc), len(file_zeta_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

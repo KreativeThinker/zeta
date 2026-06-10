@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +65,10 @@ func (c *Coordinator) Enroll(req *zetapb.RegisterRequest) (*zetapb.NodeConfig, e
 		return nil, fmt.Errorf("checking existing device: %w", err)
 	}
 	if existing != nil {
+		// Hostname must still match — reject if someone tries to reuse a key under a new name.
+		if existing.Hostname != req.Hostname {
+			return nil, fmt.Errorf("public key already registered under hostname %q", existing.Hostname)
+		}
 		return &zetapb.NodeConfig{
 			NodeId:  existing.ID,
 			MeshIp:  existing.MeshIP,
@@ -72,6 +77,15 @@ func (c *Coordinator) Enroll(req *zetapb.RegisterRequest) (*zetapb.NodeConfig, e
 			CaPem:   c.ca.CertPEM(),
 			KeyPem:  []byte(existing.KeyPEM),
 		}, nil
+	}
+
+	// Reject if the hostname is taken by a different key — prevents ambiguous user: references.
+	byHostname, err := c.db.GetDeviceByHostname(req.Hostname)
+	if err != nil {
+		return nil, fmt.Errorf("checking hostname: %w", err)
+	}
+	if byHostname != nil && byHostname.WGPublicKey != req.WgPublicKey {
+		return nil, fmt.Errorf("hostname %q is already registered by a different device", req.Hostname)
 	}
 
 	meshIP, err := c.db.AllocateIP(c.cfg.Mesh.CIDR, c.cfg.Mesh.ControllerIP)
@@ -142,8 +156,9 @@ func (c *Coordinator) BuildNetworkMap() (*zetapb.NetworkMap, error) {
 		pbSvcs := make([]*zetapb.Service, 0, len(svcs))
 		for _, s := range svcs {
 			pbSvcs = append(pbSvcs, &zetapb.Service{
-				Name: s.Name,
-				Port: uint32(s.Port),
+				Name:          s.Name,
+				Port:          uint32(s.Port),
+				AllowedPubkeys: s.AllowedPKs,
 			})
 		}
 		peers = append(peers, &zetapb.Peer{
@@ -252,8 +267,30 @@ func (c *Coordinator) HandleSyncUpdate(nodeID string, upd *zetapb.SyncUpdate) er
 
 	case *zetapb.SyncUpdate_Services:
 		svcs := make([]db.Service, 0, len(p.Services.Services))
-		for _, s := range p.Services.Services {
-			svcs = append(svcs, db.Service{Name: s.Name, Port: int(s.Port)})
+		for _, decl := range p.Services.Services {
+			svc := db.Service{
+				Name:       decl.Name,
+				Port:       int(decl.Port),
+				TargetAddr: decl.TargetAddr,
+			}
+			for _, entry := range decl.AllowedHostnames {
+				hostname := entry
+				// Strip "user:" prefix.
+				if h, ok := strings.CutPrefix(entry, "user:"); ok {
+					hostname = h
+				}
+				dev, err := c.db.GetDeviceByHostname(hostname)
+				if err != nil {
+					slog.Warn("resolving ACL hostname", "hostname", hostname, "err", err)
+					continue
+				}
+				if dev == nil {
+					slog.Warn("ACL hostname not found", "hostname", hostname)
+					continue
+				}
+				svc.AllowedPKs = append(svc.AllowedPKs, dev.WGPublicKey)
+			}
+			svcs = append(svcs, svc)
 		}
 		if err := c.db.UpsertServices(nodeID, svcs); err != nil {
 			return err

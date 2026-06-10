@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE TABLE IF NOT EXISTS devices (
     id            TEXT PRIMARY KEY,
-    hostname      TEXT NOT NULL,
+    hostname      TEXT UNIQUE NOT NULL,
     os            TEXT NOT NULL,
     wg_public_key TEXT UNIQUE NOT NULL,
     mesh_ip       TEXT UNIQUE NOT NULL,
@@ -27,11 +27,20 @@ CREATE TABLE IF NOT EXISTS preauth_keys (
 );
 
 CREATE TABLE IF NOT EXISTS services (
-    id        TEXT PRIMARY KEY,
-    device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-    name      TEXT NOT NULL,
-    port      INTEGER NOT NULL,
+    id          TEXT PRIMARY KEY,
+    device_id   TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    port        INTEGER NOT NULL,
+    target_addr TEXT NOT NULL DEFAULT '',
     UNIQUE(device_id, name)
+);
+
+-- service_access stores the resolved ACL: which WG pubkey may connect to a service.
+-- Stored pubkey is immutable at grant time — re-enrollment with a new key revokes access.
+CREATE TABLE IF NOT EXISTS service_access (
+    service_id      TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    allowed_pubkey  TEXT NOT NULL,
+    PRIMARY KEY (service_id, allowed_pubkey)
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (

@@ -49,10 +49,12 @@ type PreauthKey struct {
 
 // Service is a named port a device exposes on the mesh.
 type Service struct {
-	ID       string `json:"id"`
-	DeviceID string `json:"device_id"`
-	Name     string `json:"name"`
-	Port     int    `json:"port"`
+	ID           string   `json:"id"`
+	DeviceID     string   `json:"device_id"`
+	Name         string   `json:"name"`
+	Port         int      `json:"port"`
+	TargetAddr   string   `json:"target_addr"`
+	AllowedPKs   []string `json:"allowed_pubkeys"` // WG pubkeys; populated by ListServicesByDevice
 }
 
 // AuditEntry is a single audit log record.
@@ -88,10 +90,15 @@ func Open(path string) (*DB, error) {
 func migrate(conn *sql.DB) error {
 	migrations := []string{
 		`ALTER TABLE devices ADD COLUMN key_pem TEXT`,
+		`ALTER TABLE services ADD COLUMN target_addr TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS service_access (
+			service_id     TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+			allowed_pubkey TEXT NOT NULL,
+			PRIMARY KEY (service_id, allowed_pubkey)
+		)`,
 	}
 	for _, m := range migrations {
 		if _, err := conn.Exec(m); err != nil {
-			// SQLite returns an error when the column already exists; ignore it.
 			if !strings.Contains(err.Error(), "duplicate column name") &&
 				!strings.Contains(err.Error(), "already exists") {
 				return err
@@ -147,6 +154,13 @@ func (d *DB) GetDeviceByPubKey(pubKey string) (*Device, error) {
 	return scanDevice(d.conn.QueryRow(
 		`SELECT id, hostname, os, wg_public_key, mesh_ip, cert_pem, key_pem, last_seen, last_endpoint, agent_version, created_at
 		 FROM devices WHERE wg_public_key = ?`, pubKey,
+	))
+}
+
+func (d *DB) GetDeviceByHostname(hostname string) (*Device, error) {
+	return scanDevice(d.conn.QueryRow(
+		`SELECT id, hostname, os, wg_public_key, mesh_ip, cert_pem, key_pem, last_seen, last_endpoint, agent_version, created_at
+		 FROM devices WHERE hostname = ?`, hostname,
 	))
 }
 
@@ -334,10 +348,18 @@ func (d *DB) UpsertServices(deviceID string, svcs []Service) error {
 			s.ID = uuid.NewString()
 		}
 		if _, err := tx.Exec(
-			`INSERT INTO services(id, device_id, name, port) VALUES(?,?,?,?)`,
-			s.ID, deviceID, s.Name, s.Port,
+			`INSERT INTO services(id, device_id, name, port, target_addr) VALUES(?,?,?,?,?)`,
+			s.ID, deviceID, s.Name, s.Port, s.TargetAddr,
 		); err != nil {
 			return err
+		}
+		for _, pk := range s.AllowedPKs {
+			if _, err := tx.Exec(
+				`INSERT INTO service_access(service_id, allowed_pubkey) VALUES(?,?)`,
+				s.ID, pk,
+			); err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()
@@ -345,7 +367,7 @@ func (d *DB) UpsertServices(deviceID string, svcs []Service) error {
 
 func (d *DB) ListServicesByDevice(deviceID string) ([]Service, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, device_id, name, port FROM services WHERE device_id = ?`, deviceID,
+		`SELECT id, device_id, name, port, target_addr FROM services WHERE device_id = ?`, deviceID,
 	)
 	if err != nil {
 		return nil, err
@@ -355,12 +377,34 @@ func (d *DB) ListServicesByDevice(deviceID string) ([]Service, error) {
 	var svcs []Service
 	for rows.Next() {
 		var s Service
-		if err := rows.Scan(&s.ID, &s.DeviceID, &s.Name, &s.Port); err != nil {
+		if err := rows.Scan(&s.ID, &s.DeviceID, &s.Name, &s.Port, &s.TargetAddr); err != nil {
 			return nil, err
 		}
 		svcs = append(svcs, s)
 	}
-	return svcs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Load ACL for each service.
+	for i, s := range svcs {
+		pkRows, err := d.conn.Query(
+			`SELECT allowed_pubkey FROM service_access WHERE service_id = ?`, s.ID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		for pkRows.Next() {
+			var pk string
+			if err := pkRows.Scan(&pk); err != nil {
+				pkRows.Close()
+				return nil, err
+			}
+			svcs[i].AllowedPKs = append(svcs[i].AllowedPKs, pk)
+		}
+		pkRows.Close()
+	}
+	return svcs, nil
 }
 
 // ── Audit ─────────────────────────────────────────────────────────────────────

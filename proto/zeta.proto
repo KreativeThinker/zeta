@@ -46,7 +46,7 @@ message NodeConfig {
 message SyncUpdate {
   oneof payload {
     EndpointUpdate endpoint = 1;
-    ServiceUpdate services = 2;
+    ServiceAnnounce services = 2;
     PingUpdate ping = 3;
   }
 }
@@ -56,9 +56,18 @@ message EndpointUpdate {
   string endpoint = 2; // "ip:port" discovered via STUN
 }
 
-message ServiceUpdate {
-  string node_id = 1;
-  repeated Service services = 2;
+// ServiceAnnounce is sent by the agent to declare which services it exposes.
+// allowed_hostnames uses "user:<hostname>" syntax, e.g. "user:graveyard".
+// The coordinator resolves hostnames to WireGuard public keys for ACL enforcement.
+message ServiceAnnounce {
+  repeated ServiceDecl services = 1;
+}
+
+message ServiceDecl {
+  string name = 1;
+  uint32 port = 2;
+  string target_addr = 3;              // local address to proxy to, e.g. "172.17.0.2:3000"
+  repeated string allowed_hostnames = 4; // ["user:graveyard", "user:shire"]
 }
 
 message PingUpdate {
@@ -92,10 +101,12 @@ message Peer {
   bool online = 8;
 }
 
+// Service is included in each Peer in the NetworkMap.
+// allowed_pubkeys is the list of WireGuard public keys permitted to connect.
 message Service {
   string name = 1;
   uint32 port = 2;
-  repeated string allowed_users = 3; // user IDs; empty = node-owner only
+  repeated string allowed_pubkeys = 3;
 }
 
 message DNSConfig {

@@ -46,3 +46,4 @@ android/app/build/
 android/build/
 *.apk
 *.aab
+/claude-reference

@@ -38,8 +38,13 @@ func (r *Resolver) UpdateFromNetworkMap(peers []*zetapb.Peer, domain string) {
 		if p.Hostname == "" || p.MeshIp == "" {
 			continue
 		}
-		fqdn := dns.Fqdn(fmt.Sprintf("%s.%s", p.Hostname, domain))
-		records[fqdn] = p.MeshIp
+		// peer hostname: shire.mesh
+		records[dns.Fqdn(fmt.Sprintf("%s.%s", p.Hostname, domain))] = p.MeshIp
+		// per-service: web.shire.mesh
+		for _, svc := range p.Services {
+			fqdn := dns.Fqdn(fmt.Sprintf("%s.%s.%s", svc.Name, p.Hostname, domain))
+			records[fqdn] = p.MeshIp
+		}
 	}
 	r.mu.Lock()
 	r.records = records
