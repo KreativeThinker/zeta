@@ -11,6 +11,11 @@ type Config struct {
 	WireGuard   WGConfig          `yaml:"wireguard"`
 	DNS         DNSConfig         `yaml:"dns"`
 	State       StateConfig       `yaml:"state"`
+	HTTP        HTTPConfig        `yaml:"http"`
+}
+
+type HTTPConfig struct {
+	Addr string `yaml:"addr"` // agent UI listen address
 }
 
 type CoordinatorConfig struct {
@@ -37,6 +42,7 @@ func defaults() *Config {
 		WireGuard:   WGConfig{Interface: "zeta0", ListenPort: 51820},
 		DNS:         DNSConfig{ListenAddr: "127.0.0.1:53", Upstream: "1.1.1.1:53"},
 		State:       StateConfig{Path: "/var/lib/zeta/state.json"},
+		HTTP:        HTTPConfig{Addr: "127.0.0.1:6080"},
 	}
 }
 
@@ -70,6 +76,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("ZETA_DNS_UPSTREAM"); v != "" {
 		cfg.DNS.Upstream = v
+	}
+	if v := os.Getenv("ZETA_HTTP_ADDR"); v != "" {
+		cfg.HTTP.Addr = v
 	}
 
 	return cfg, nil

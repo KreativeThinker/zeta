@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"net/http"
+
+	"github.com/kreativethinker/zeta/agent/internal/agentapi"
 	"github.com/kreativethinker/zeta/agent/internal/config"
 	"github.com/kreativethinker/zeta/agent/internal/control"
 	"github.com/kreativethinker/zeta/agent/internal/dns"
@@ -111,12 +114,28 @@ func main() {
 	proxyMgr := proxy.New()
 	defer proxyMgr.StopAll()
 
+	// Agent HTTP UI — sendCh is not yet open here; announceServices is called
+	// inside runSyncLoop. We pass a callback that gets wired once the stream opens.
+	var sendChRef chan<- *zetapb.SyncUpdate
+	agentHandler := agentapi.New(st, *zetafilePath, proxyMgr, func(updated *config.Zetafile) {
+		zf = updated
+		if sendChRef != nil {
+			announceServices(sendChRef, updated)
+		}
+	})
+	go func() {
+		slog.Info("agent UI listening", "addr", cfg.HTTP.Addr)
+		if err := http.ListenAndServe(cfg.HTTP.Addr, agentHandler); err != nil {
+			slog.Warn("agent UI stopped", "err", err)
+		}
+	}()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	slog.Info("zeta agent up", "interface", cfg.WireGuard.Interface, "mesh_ip", st.MeshIP)
 
-	runSyncLoop(ctx, client, st, wgMgr, resolver, proxyMgr, zf, cfg)
+	runSyncLoop(ctx, client, st, wgMgr, resolver, proxyMgr, zf, cfg, &sendChRef)
 
 	if err := wgMgr.ApplyPeers(nil); err != nil {
 		slog.Warn("clearing WireGuard peers on exit", "err", err)
@@ -165,6 +184,7 @@ func runSyncLoop(
 	proxyMgr *proxy.Manager,
 	zf *config.Zetafile,
 	cfg *config.Config,
+	sendChPtr *chan<- *zetapb.SyncUpdate,
 ) {
 	backoff := time.Second
 	const maxBackoff = 60 * time.Second
@@ -189,6 +209,9 @@ func runSyncLoop(
 		// streamCtx is cancelled when this stream attempt ends (disconnect or shutdown).
 		// It stops the per-stream goroutines before we close sendCh.
 		streamCtx, streamCancel := context.WithCancel(ctx)
+
+		// Expose sendCh to the agent API callback so UI-triggered changes can re-announce.
+		*sendChPtr = sendCh
 
 		// Announce services declared in zetafile.yml immediately on connect.
 		if len(zf.Services) > 0 {
@@ -234,6 +257,7 @@ func runSyncLoop(
 		for {
 			select {
 			case <-ctx.Done():
+				*sendChPtr = nil
 				streamCancel()
 				<-stunDone
 				<-pingDone
@@ -242,6 +266,7 @@ func runSyncLoop(
 			case msg, ok := <-recvCh:
 				if !ok {
 					// Stream disconnected — stop goroutines, then reconnect.
+					*sendChPtr = nil
 					streamCancel()
 					<-stunDone
 					<-pingDone
@@ -315,14 +340,16 @@ func handleSyncResponse(
 	case *zetapb.SyncResponse_NetworkMap:
 		nm := p.NetworkMap
 
-		// Build mesh-IP → pubkey map for proxy ACL lookups.
+		// Build mesh-IP → pubkey and mesh-IP → hostname maps for proxy ACL/logging.
 		ipToPK := make(map[string]string, len(nm.Peers))
+		ipToHost := make(map[string]string, len(nm.Peers))
 		var peers []wg.PeerConfig
 		for _, peer := range nm.Peers {
 			if peer.NodeId == st.NodeID {
 				continue
 			}
 			ipToPK[peer.MeshIp] = peer.WgPublicKey
+			ipToHost[peer.MeshIp] = peer.Hostname
 			peers = append(peers, wg.PeerConfig{
 				PublicKey:  peer.WgPublicKey,
 				AllowedIPs: []string{peer.MeshIp + "/32"},
@@ -359,7 +386,7 @@ func handleSyncResponse(
 					AllowedPKs: svcPKs[s.Name],
 				})
 			}
-			proxyMgr.Sync(st.MeshIP, proxySvcs, ipToPK)
+			proxyMgr.Sync(st.MeshIP, proxySvcs, ipToPK, ipToHost)
 		}
 
 		slog.Info("network map updated", "peers", len(peers))

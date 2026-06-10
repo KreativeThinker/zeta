@@ -7,6 +7,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func SaveZetafile(path string, zf *Zetafile) error {
+	if path == "" {
+		path = "zetafile.yml"
+	}
+	data, err := yaml.Marshal(zf)
+	if err != nil {
+		return fmt.Errorf("marshalling zetafile: %w", err)
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
 type Zetafile struct {
 	Services []ZetaService `yaml:"services"`
 }

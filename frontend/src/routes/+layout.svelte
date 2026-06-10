@@ -9,7 +9,6 @@
 	const links = [
 		{ href: '/', label: 'Dashboard', icon: 'grid' },
 		{ href: '/devices', label: 'Devices', icon: 'monitor' },
-		{ href: '/services', label: 'Services', icon: 'services' },
 		{ href: '/keys', label: 'Preauth Keys', icon: 'key' },
 		{ href: '/audit', label: 'Audit Log', icon: 'list' },
 	];
@@ -52,8 +51,6 @@
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
 					{:else if link.icon === 'key'}
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3"/></svg>
-					{:else if link.icon === 'services'}
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
 					{:else if link.icon === 'list'}
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>
 					{/if}

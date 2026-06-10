@@ -6,20 +6,37 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 )
+
+const maxEvents = 500
+
+// AccessEvent records a single inbound connection attempt.
+type AccessEvent struct {
+	Time     time.Time `json:"time"`
+	Service  string    `json:"service"`
+	SourceIP string    `json:"source_ip"`
+	Hostname string    `json:"hostname"` // resolved from mesh IP, empty if unknown
+	Allowed  bool      `json:"allowed"`
+}
 
 // Manager starts and stops TCP proxy listeners for services this agent hosts.
 type Manager struct {
 	mu        sync.Mutex
 	listeners map[string]*serviceListener // service name → listener
+
+	eventsMu sync.RWMutex
+	events   []AccessEvent // ring buffer capped at maxEvents
 }
 
 type serviceListener struct {
-	name        string
-	targetAddr  string
-	allowedPKs  map[string]struct{} // WG pubkeys allowed to connect
-	meshIPToPK  map[string]string   // peer mesh IP → WG pubkey (updated from NetworkMap)
-	ln          net.Listener
+	name       string
+	targetAddr string
+	allowedPKs map[string]struct{} // WG pubkeys allowed to connect
+	meshIPToPK map[string]string   // peer mesh IP → WG pubkey
+	ipToHost   map[string]string   // peer mesh IP → hostname
+	mgr        *Manager
+	ln         net.Listener
 }
 
 func New() *Manager {
@@ -28,9 +45,9 @@ func New() *Manager {
 
 // Sync reconciles running listeners against the desired state.
 // meshIP is this agent's own mesh IP (used as the bind address).
-// services is a list of (name, port, targetAddr, allowedPKs) for services this agent hosts.
-// ipToPK maps every peer's mesh IP to their WG public key (for ACL lookups).
-func (m *Manager) Sync(meshIP string, services []ServiceConfig, ipToPK map[string]string) {
+// ipToPK maps every peer's mesh IP to their WG public key.
+// ipToHost maps every peer's mesh IP to their hostname.
+func (m *Manager) Sync(meshIP string, services []ServiceConfig, ipToPK, ipToHost map[string]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -49,13 +66,12 @@ func (m *Manager) Sync(meshIP string, services []ServiceConfig, ipToPK map[strin
 		}
 	}
 
-	// Start listeners for new services.
+	// Start or update listeners.
 	for name, cfg := range desired {
-		if _, running := m.listeners[name]; running {
-			// Update ACL and peer map in place.
-			l := m.listeners[name]
+		if l, running := m.listeners[name]; running {
 			l.allowedPKs = setOf(cfg.AllowedPKs)
 			l.meshIPToPK = ipToPK
+			l.ipToHost = ipToHost
 			continue
 		}
 		addr := net.JoinHostPort(meshIP, fmt.Sprint(cfg.Port))
@@ -69,6 +85,8 @@ func (m *Manager) Sync(meshIP string, services []ServiceConfig, ipToPK map[strin
 			targetAddr: cfg.TargetAddr,
 			allowedPKs: setOf(cfg.AllowedPKs),
 			meshIPToPK: ipToPK,
+			ipToHost:   ipToHost,
+			mgr:        m,
 			ln:         ln,
 		}
 		m.listeners[name] = sl
@@ -88,11 +106,34 @@ func (m *Manager) StopAll() {
 	}
 }
 
+// RecentEvents returns up to n most recent access events (newest first).
+func (m *Manager) RecentEvents(n int) []AccessEvent {
+	m.eventsMu.RLock()
+	defer m.eventsMu.RUnlock()
+	if n <= 0 || n > len(m.events) {
+		n = len(m.events)
+	}
+	out := make([]AccessEvent, n)
+	// events are stored oldest-first; return newest-first
+	for i := 0; i < n; i++ {
+		out[i] = m.events[len(m.events)-1-i]
+	}
+	return out
+}
+
+func (m *Manager) record(ev AccessEvent) {
+	m.eventsMu.Lock()
+	defer m.eventsMu.Unlock()
+	if len(m.events) >= maxEvents {
+		m.events = m.events[1:]
+	}
+	m.events = append(m.events, ev)
+}
+
 func (sl *serviceListener) serve() {
 	for {
 		conn, err := sl.ln.Accept()
 		if err != nil {
-			// Listener closed — normal shutdown.
 			return
 		}
 		go sl.handle(conn)
@@ -108,17 +149,22 @@ func (sl *serviceListener) handle(conn net.Conn) {
 		return
 	}
 
-	// Look up the WG pubkey for this source mesh IP.
 	pk, ok := sl.meshIPToPK[srcIP]
+	hostname := sl.ipToHost[srcIP]
+
 	if !ok {
 		slog.Warn("proxy: unknown source mesh IP", "service", sl.name, "src", srcIP)
+		sl.mgr.record(AccessEvent{Time: time.Now(), Service: sl.name, SourceIP: srcIP, Allowed: false})
 		return
 	}
 
 	if _, allowed := sl.allowedPKs[pk]; !allowed {
-		slog.Warn("proxy: access denied", "service", sl.name, "src", srcIP)
+		slog.Warn("proxy: access denied", "service", sl.name, "src", srcIP, "hostname", hostname)
+		sl.mgr.record(AccessEvent{Time: time.Now(), Service: sl.name, SourceIP: srcIP, Hostname: hostname, Allowed: false})
 		return
 	}
+
+	sl.mgr.record(AccessEvent{Time: time.Now(), Service: sl.name, SourceIP: srcIP, Hostname: hostname, Allowed: true})
 
 	upstream, err := net.Dial("tcp", sl.targetAddr)
 	if err != nil {
@@ -130,17 +176,17 @@ func (sl *serviceListener) handle(conn net.Conn) {
 	slog.Debug("proxy: forwarding", "service", sl.name, "src", srcIP, "target", sl.targetAddr)
 
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(upstream, conn); done <- struct{}{} }()  //nolint:errcheck
-	go func() { io.Copy(conn, upstream); done <- struct{}{} }()  //nolint:errcheck
+	go func() { io.Copy(upstream, conn); done <- struct{}{} }() //nolint:errcheck
+	go func() { io.Copy(conn, upstream); done <- struct{}{} }() //nolint:errcheck
 	<-done
 }
 
 // ServiceConfig describes a service this agent should proxy.
 type ServiceConfig struct {
-	Name        string
-	Port        int
-	TargetAddr  string
-	AllowedPKs  []string
+	Name       string
+	Port       int
+	TargetAddr string
+	AllowedPKs []string
 }
 
 func setOf(keys []string) map[string]struct{} {
