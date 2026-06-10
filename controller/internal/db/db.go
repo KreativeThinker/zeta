@@ -365,6 +365,56 @@ func (d *DB) UpsertServices(deviceID string, svcs []Service) error {
 	return tx.Commit()
 }
 
+// ServiceWithDevice enriches a Service with its host device's hostname and mesh IP.
+type ServiceWithDevice struct {
+	Service
+	DeviceHostname string `json:"device_hostname"`
+	DeviceMeshIP   string `json:"device_mesh_ip"`
+}
+
+func (d *DB) ListAllServices() ([]ServiceWithDevice, error) {
+	rows, err := d.conn.Query(`
+		SELECT s.id, s.device_id, s.name, s.port, s.target_addr,
+		       d.hostname, d.mesh_ip
+		FROM services s
+		JOIN devices d ON d.id = s.device_id
+		ORDER BY d.hostname, s.name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var svcs []ServiceWithDevice
+	for rows.Next() {
+		var s ServiceWithDevice
+		if err := rows.Scan(&s.ID, &s.DeviceID, &s.Name, &s.Port, &s.TargetAddr,
+			&s.DeviceHostname, &s.DeviceMeshIP); err != nil {
+			return nil, err
+		}
+		svcs = append(svcs, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i, s := range svcs {
+		pkRows, err := d.conn.Query(`SELECT allowed_pubkey FROM service_access WHERE service_id = ?`, s.ID)
+		if err != nil {
+			return nil, err
+		}
+		for pkRows.Next() {
+			var pk string
+			if err := pkRows.Scan(&pk); err != nil {
+				pkRows.Close()
+				return nil, err
+			}
+			svcs[i].AllowedPKs = append(svcs[i].AllowedPKs, pk)
+		}
+		pkRows.Close()
+	}
+	return svcs, nil
+}
+
 func (d *DB) ListServicesByDevice(deviceID string) ([]Service, error) {
 	rows, err := d.conn.Query(
 		`SELECT id, device_id, name, port, target_addr FROM services WHERE device_id = ?`, deviceID,

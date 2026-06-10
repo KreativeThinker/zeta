@@ -48,6 +48,8 @@ func NewHTTPServer(coord *coordinator.Coordinator, database *db.DB, adminPasswor
 			r.Delete("/preauth-keys/{key}", handleDeletePreauthKey(database))
 
 			r.Get("/audit-log", handleAuditLog(database))
+
+			r.Get("/services", handleListServices(database))
 		})
 	})
 
@@ -211,6 +213,20 @@ func handleAuditLog(database *db.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, entries)
+	}
+}
+
+func handleListServices(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		svcs, err := database.ListAllServices()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if svcs == nil {
+			svcs = []db.ServiceWithDevice{}
+		}
+		writeJSON(w, http.StatusOK, svcs)
 	}
 }
 
