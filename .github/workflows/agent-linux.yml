@@ -120,7 +120,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
         run: |
-          for arch in amd64 arm64 arm; do
+          for arch in amd64; do
             GOARCH=$arch go build -trimpath \
               -ldflags="-s -w -X main.Version=$VERSION -X main.Commit=$COMMIT" \
               -o dist/zeta-agent-linux-$arch \
@@ -132,7 +132,7 @@ jobs:
         with:
           context: .
           file: agent/Dockerfile
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
