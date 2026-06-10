@@ -52,5 +52,5 @@ func DiscoverEndpoint(stunServer string) (string, error) {
 		return "", fmt.Errorf("no address in STUN response")
 	}
 
-	return fmt.Sprintf("%s:%d", ip.String(), port), nil
+	return net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)), nil
 }
