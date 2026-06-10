@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 
 	type Device = {
 		id: string; hostname: string; os: string; mesh_ip: string;
@@ -15,6 +16,7 @@
 	async function load() {
 		try {
 			const r = await fetch('/api/v1/devices');
+			if (r.status === 401) { goto('/login'); return; }
 			if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
 			devices = await r.json();
 			error = null;

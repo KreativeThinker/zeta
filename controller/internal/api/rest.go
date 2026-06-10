@@ -21,24 +21,34 @@ var (
 
 // NewHTTPServer builds and returns the chi router. Call http.ListenAndServe
 // with the returned handler.
-func NewHTTPServer(coord *coordinator.Coordinator, database *db.DB) http.Handler {
+func NewHTTPServer(coord *coordinator.Coordinator, database *db.DB, adminPassword string) http.Handler {
+	initAuth(adminPassword)
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// Public: status (used by Docker healthcheck) + auth endpoints.
 		r.Get("/status", handleStatus(coord, database))
+		r.Post("/auth/login", handleLogin)
+		r.Post("/auth/logout", handleLogout)
 
-		r.Get("/devices", handleListDevices(coord, database))
-		r.Get("/devices/{id}", handleGetDevice(coord, database))
-		r.Delete("/devices/{id}", handleDeleteDevice(coord, database))
+		// Protected: everything else requires a valid session cookie.
+		r.Group(func(r chi.Router) {
+			r.Use(requireAuth)
 
-		r.Get("/preauth-keys", handleListPreauthKeys(database))
-		r.Post("/preauth-keys", handleCreatePreauthKey(coord))
-		r.Delete("/preauth-keys/{key}", handleDeletePreauthKey(database))
+			r.Get("/devices", handleListDevices(coord, database))
+			r.Get("/devices/{id}", handleGetDevice(coord, database))
+			r.Delete("/devices/{id}", handleDeleteDevice(coord, database))
 
-		r.Get("/audit-log", handleAuditLog(database))
+			r.Get("/preauth-keys", handleListPreauthKeys(database))
+			r.Post("/preauth-keys", handleCreatePreauthKey(coord))
+			r.Delete("/preauth-keys/{key}", handleDeletePreauthKey(database))
+
+			r.Get("/audit-log", handleAuditLog(database))
+		})
 	})
 
 	// Serve embedded SvelteKit SPA for everything else.

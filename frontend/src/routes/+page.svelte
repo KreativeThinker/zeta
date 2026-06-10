@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 
 	type Status = { version: string; commit: string; uptime: string; device_count: number };
 	type Device = {
@@ -14,10 +15,14 @@
 
 	async function load() {
 		try {
-			const [s, d] = await Promise.all([
-				fetch('/api/v1/status').then(r => r.ok ? r.json() : r.json().then((e: {error:string}) => { throw new Error(e.error); })),
-				fetch('/api/v1/devices').then(r => r.ok ? r.json() : r.json().then((e: {error:string}) => { throw new Error(e.error); })),
+			const [sr, dr] = await Promise.all([
+				fetch('/api/v1/status'),
+				fetch('/api/v1/devices'),
 			]);
+			if (sr.status === 401 || dr.status === 401) { goto('/login'); return; }
+			if (!sr.ok) throw new Error((await sr.json()).error);
+			if (!dr.ok) throw new Error((await dr.json()).error);
+			const [s, d] = await Promise.all([sr.json(), dr.json()]);
 			status = s;
 			devices = d;
 			error = null;

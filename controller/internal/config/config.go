@@ -24,7 +24,8 @@ type GRPCConfig struct {
 }
 
 type HTTPConfig struct {
-	Addr string `yaml:"addr"`
+	Addr          string `yaml:"addr"`
+	AdminPassword string `yaml:"admin_password"`
 }
 
 type CAConfig struct {
@@ -79,6 +80,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("ZETA_HTTP_ADDR"); v != "" {
 		cfg.HTTP.Addr = v
+	}
+	if v := os.Getenv("ZETA_ADMIN_PASSWORD"); v != "" {
+		cfg.HTTP.AdminPassword = v
 	}
 	if v := os.Getenv("ZETA_CA_CERT_FILE"); v != "" {
 		cfg.CA.CertFile = v

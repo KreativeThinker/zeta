@@ -59,6 +59,10 @@ func main() {
 
 	coord := coordinator.New(database, authority, cfg)
 
+	if cfg.HTTP.AdminPassword == "" {
+		slog.Warn("ZETA_ADMIN_PASSWORD not set — dashboard is unprotected")
+	}
+
 	// Phase 1: plaintext gRPC (no TLS certs generated for gRPC yet).
 	// Phase 2 will issue a server cert from the CA and enable TLS.
 	grpcSrv, err := api.NewGRPCServer(coord, authority.CertPEM(), nil, nil)
@@ -67,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	httpHandler := api.NewHTTPServer(coord, database)
+	httpHandler := api.NewHTTPServer(coord, database, cfg.HTTP.AdminPassword)
 	httpSrv := &http.Server{
 		Addr:         cfg.HTTP.Addr,
 		Handler:      httpHandler,

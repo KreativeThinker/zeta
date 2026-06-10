@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 
 	type AuditEntry = {
 		id: number; event: string; device_id: string | null;
@@ -15,7 +16,9 @@
 
 	async function load(reset = false) {
 		if (reset) { offset = 0; entries = []; hasMore = true; }
-		const res = await fetch(`/api/v1/audit-log?limit=${LIMIT}&offset=${offset}`).then(r => r.json());
+		const r = await fetch(`/api/v1/audit-log?limit=${LIMIT}&offset=${offset}`);
+		if (r.status === 401) { goto('/login'); return; }
+		const res = await r.json();
 		const batch: AuditEntry[] = res ?? [];
 		entries = reset ? batch : [...entries, ...batch];
 		offset += batch.length;

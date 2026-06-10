@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 
 	type PreauthKey = {
 		key: string; label: string; reusable: boolean;
@@ -16,8 +17,9 @@
 	let copiedKey = $state<string | null>(null);
 
 	async function load() {
-		const d = await fetch('/api/v1/preauth-keys').then(r => r.json());
-		keys = d;
+		const r = await fetch('/api/v1/preauth-keys');
+		if (r.status === 401) { goto('/login'); return; }
+		keys = await r.json();
 		loading = false;
 	}
 
