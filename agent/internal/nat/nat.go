@@ -12,7 +12,7 @@ const DefaultSTUN = "stun.l.google.com:19302"
 // DiscoverEndpoint sends a STUN binding request to learn the external IP,
 // then returns "ip:wgPort".
 func DiscoverEndpoint(stunServer string, wgPort int) (string, error) {
-	return doSTUN(stunServer, "udp", wgPort)
+	return doSTUN(stunServer, "udp4", wgPort)
 }
 
 func doSTUN(stunServer, network string, wgPort int) (string, error) {
