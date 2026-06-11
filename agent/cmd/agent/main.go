@@ -119,7 +119,11 @@ func main() {
 	defer resolver.Stop()
 
 	proxyMgr := proxy.New()
-	defer proxyMgr.StopAll()
+	if err := proxyMgr.Start(cfg.Proxy.Addr); err != nil {
+		slog.Error("starting proxy", "err", err)
+		os.Exit(1)
+	}
+	defer proxyMgr.Stop()
 
 	// Agent HTTP UI — sendCh is not yet open here; announceServices is called
 	// inside runSyncLoop. We pass a callback that gets wired once the stream opens.
@@ -303,7 +307,6 @@ func announceServices(sendCh chan<- *zetapb.SyncUpdate, zf *config.Zetafile) {
 	for _, s := range zf.Services {
 		decls = append(decls, &zetapb.ServiceDecl{
 			Name:             s.Name,
-			Port:             uint32(s.Port),
 			TargetAddr:       s.Target,
 			AllowedHostnames: s.Access,
 		})
@@ -393,12 +396,11 @@ func handleSyncResponse(
 			for _, s := range zf.Services {
 				proxySvcs = append(proxySvcs, proxy.ServiceConfig{
 					Name:       s.Name,
-					Port:       s.Port,
 					TargetAddr: s.Target,
 					AllowedPKs: svcPKs[s.Name],
 				})
 			}
-			proxyMgr.Sync(st.MeshIP, proxySvcs, ipToPK, ipToHost)
+			proxyMgr.Sync(proxySvcs, ipToPK, ipToHost)
 		}
 
 		slog.Info("network map updated", "peers", len(peers))

@@ -12,6 +12,11 @@ type Config struct {
 	DNS         DNSConfig         `yaml:"dns"`
 	State       StateConfig       `yaml:"state"`
 	HTTP        HTTPConfig        `yaml:"http"`
+	Proxy       ProxyConfig       `yaml:"proxy"`
+}
+
+type ProxyConfig struct {
+	Addr string `yaml:"addr"`
 }
 
 type HTTPConfig struct {
@@ -43,6 +48,7 @@ func defaults() *Config {
 		DNS:         DNSConfig{ListenAddr: "127.0.0.1:53", Upstream: "1.1.1.1:53"},
 		State:       StateConfig{Path: "/var/lib/zeta/state.json"},
 		HTTP:        HTTPConfig{Addr: "127.0.0.1:6080"},
+		Proxy:       ProxyConfig{Addr: "0.0.0.0:1080"},
 	}
 }
 
@@ -79,6 +85,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("ZETA_HTTP_ADDR"); v != "" {
 		cfg.HTTP.Addr = v
+	}
+	if v := os.Getenv("ZETA_PROXY_ADDR"); v != "" {
+		cfg.Proxy.Addr = v
 	}
 
 	return cfg, nil

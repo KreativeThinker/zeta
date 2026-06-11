@@ -25,7 +25,6 @@ type Zetafile struct {
 type ZetaService struct {
 	Name   string   `yaml:"name"   json:"name"`
 	Target string   `yaml:"target" json:"target"`
-	Port   int      `yaml:"port"   json:"port"`
 	Access []string `yaml:"access" json:"access"`
 }
 

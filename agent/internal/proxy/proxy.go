@@ -1,10 +1,12 @@
 package proxy
 
 import (
-	"fmt"
-	"io"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,94 +18,137 @@ type AccessEvent struct {
 	Time     time.Time `json:"time"`
 	Service  string    `json:"service"`
 	SourceIP string    `json:"source_ip"`
-	Hostname string    `json:"hostname"` // resolved from mesh IP, empty if unknown
+	Hostname string    `json:"hostname"`
 	Allowed  bool      `json:"allowed"`
 }
 
-// Manager starts and stops TCP proxy listeners for services this agent hosts.
+// Manager runs a single HTTP reverse proxy that routes by Host header.
 type Manager struct {
-	mu        sync.Mutex
-	listeners map[string]*serviceListener // service name → listener
+	mu       sync.RWMutex
+	routes   map[string]*route // service name → route
+	ipToPK   map[string]string
+	ipToHost map[string]string
+
+	server *http.Server
 
 	eventsMu sync.RWMutex
-	events   []AccessEvent // ring buffer capped at maxEvents
+	events   []AccessEvent
 }
 
-type serviceListener struct {
-	name       string
+type route struct {
 	targetAddr string
-	allowedPKs map[string]struct{} // WG pubkeys allowed to connect
-	meshIPToPK map[string]string   // peer mesh IP → WG pubkey
-	ipToHost   map[string]string   // peer mesh IP → hostname
-	mgr        *Manager
-	ln         net.Listener
+	allowedPKs map[string]struct{}
+	rp         *httputil.ReverseProxy
+}
+
+// ServiceConfig describes a service this agent should proxy.
+type ServiceConfig struct {
+	Name       string
+	TargetAddr string
+	AllowedPKs []string
 }
 
 func New() *Manager {
-	return &Manager{listeners: make(map[string]*serviceListener)}
+	return &Manager{
+		routes:   make(map[string]*route),
+		ipToPK:   make(map[string]string),
+		ipToHost: make(map[string]string),
+	}
 }
 
-// Sync reconciles running listeners against the desired state.
-// meshIP is this agent's own mesh IP (used as the bind address).
-// ipToPK maps every peer's mesh IP to their WG public key.
-// ipToHost maps every peer's mesh IP to their hostname.
-func (m *Manager) Sync(meshIP string, services []ServiceConfig, ipToPK, ipToHost map[string]string) {
+// Start begins listening on addr. Must be called once before Sync has any effect.
+func (m *Manager) Start(addr string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	m.server = &http.Server{Handler: m}
+	slog.Info("proxy listening", "addr", addr)
+	go m.server.Serve(ln) //nolint:errcheck
+	return nil
+}
+
+// Stop shuts down the proxy listener.
+func (m *Manager) Stop() {
+	if m.server != nil {
+		m.server.Close()
+	}
+}
+
+// Sync reconciles the routing table and ACL maps.
+func (m *Manager) Sync(services []ServiceConfig, ipToPK, ipToHost map[string]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	m.ipToPK = ipToPK
+	m.ipToHost = ipToHost
 
 	desired := make(map[string]ServiceConfig, len(services))
 	for _, s := range services {
 		desired[s.Name] = s
 	}
 
-	// Stop listeners for removed or changed services.
-	for name, l := range m.listeners {
-		cfg, ok := desired[name]
-		if !ok || cfg.TargetAddr != l.targetAddr || cfg.Port != portFromAddr(l.ln.Addr().String()) {
-			slog.Info("stopping proxy", "service", name)
-			l.ln.Close()
-			delete(m.listeners, name)
+	for name := range m.routes {
+		if _, ok := desired[name]; !ok {
+			delete(m.routes, name)
+			slog.Info("proxy: removed route", "service", name)
 		}
 	}
 
-	// Start or update listeners.
 	for name, cfg := range desired {
-		if l, running := m.listeners[name]; running {
-			l.allowedPKs = setOf(cfg.AllowedPKs)
-			l.meshIPToPK = ipToPK
-			l.ipToHost = ipToHost
+		if r, ok := m.routes[name]; ok && r.targetAddr == cfg.TargetAddr {
+			r.allowedPKs = setOf(cfg.AllowedPKs)
 			continue
 		}
-		addr := net.JoinHostPort(meshIP, fmt.Sprint(cfg.Port))
-		ln, err := net.Listen("tcp", addr)
+		target, err := url.Parse("http://" + cfg.TargetAddr)
 		if err != nil {
-			slog.Error("starting proxy listener", "service", name, "addr", addr, "err", err)
+			slog.Error("proxy: invalid target", "service", name, "target", cfg.TargetAddr, "err", err)
 			continue
 		}
-		sl := &serviceListener{
-			name:       name,
+		m.routes[name] = &route{
 			targetAddr: cfg.TargetAddr,
 			allowedPKs: setOf(cfg.AllowedPKs),
-			meshIPToPK: ipToPK,
-			ipToHost:   ipToHost,
-			mgr:        m,
-			ln:         ln,
+			rp:         httputil.NewSingleHostReverseProxy(target),
 		}
-		m.listeners[name] = sl
-		slog.Info("proxy listening", "service", name, "addr", addr, "target", cfg.TargetAddr)
-		go sl.serve()
+		slog.Info("proxy: added route", "service", name, "target", cfg.TargetAddr)
 	}
 }
 
-// StopAll shuts down every running listener.
-func (m *Manager) StopAll() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for name, l := range m.listeners {
-		l.ln.Close()
-		delete(m.listeners, name)
-		slog.Info("stopped proxy", "service", name)
+func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	srcIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
 	}
+
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	serviceName := strings.SplitN(host, ".", 2)[0]
+
+	m.mu.RLock()
+	rt, routeOk := m.routes[serviceName]
+	pk, pkKnown := m.ipToPK[srcIP]
+	hostname := m.ipToHost[srcIP]
+	var allowed bool
+	if routeOk && pkKnown {
+		_, allowed = rt.allowedPKs[pk]
+	}
+	m.mu.RUnlock()
+
+	if !routeOk {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !pkKnown || !allowed {
+		m.record(AccessEvent{Time: time.Now(), Service: serviceName, SourceIP: srcIP, Hostname: hostname, Allowed: false})
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	m.record(AccessEvent{Time: time.Now(), Service: serviceName, SourceIP: srcIP, Hostname: hostname, Allowed: true})
+	rt.rp.ServeHTTP(w, r)
 }
 
 // RecentEvents returns up to n most recent access events (newest first).
@@ -114,7 +159,6 @@ func (m *Manager) RecentEvents(n int) []AccessEvent {
 		n = len(m.events)
 	}
 	out := make([]AccessEvent, n)
-	// events are stored oldest-first; return newest-first
 	for i := 0; i < n; i++ {
 		out[i] = m.events[len(m.events)-1-i]
 	}
@@ -130,79 +174,10 @@ func (m *Manager) record(ev AccessEvent) {
 	m.events = append(m.events, ev)
 }
 
-func (sl *serviceListener) serve() {
-	for {
-		conn, err := sl.ln.Accept()
-		if err != nil {
-			return
-		}
-		go sl.handle(conn)
-	}
-}
-
-func (sl *serviceListener) handle(conn net.Conn) {
-	defer conn.Close()
-
-	srcIP, _, err := net.SplitHostPort(conn.RemoteAddr().String())
-	if err != nil {
-		slog.Warn("proxy: bad remote addr", "err", err)
-		return
-	}
-
-	pk, ok := sl.meshIPToPK[srcIP]
-	hostname := sl.ipToHost[srcIP]
-
-	if !ok {
-		slog.Warn("proxy: unknown source mesh IP", "service", sl.name, "src", srcIP)
-		sl.mgr.record(AccessEvent{Time: time.Now(), Service: sl.name, SourceIP: srcIP, Allowed: false})
-		return
-	}
-
-	if _, allowed := sl.allowedPKs[pk]; !allowed {
-		slog.Warn("proxy: access denied", "service", sl.name, "src", srcIP, "hostname", hostname)
-		sl.mgr.record(AccessEvent{Time: time.Now(), Service: sl.name, SourceIP: srcIP, Hostname: hostname, Allowed: false})
-		return
-	}
-
-	sl.mgr.record(AccessEvent{Time: time.Now(), Service: sl.name, SourceIP: srcIP, Hostname: hostname, Allowed: true})
-
-	upstream, err := net.Dial("tcp", sl.targetAddr)
-	if err != nil {
-		slog.Error("proxy: connecting to target", "service", sl.name, "target", sl.targetAddr, "err", err)
-		return
-	}
-	defer upstream.Close()
-
-	slog.Debug("proxy: forwarding", "service", sl.name, "src", srcIP, "target", sl.targetAddr)
-
-	done := make(chan struct{}, 2)
-	go func() { io.Copy(upstream, conn); done <- struct{}{} }() //nolint:errcheck
-	go func() { io.Copy(conn, upstream); done <- struct{}{} }() //nolint:errcheck
-	<-done
-}
-
-// ServiceConfig describes a service this agent should proxy.
-type ServiceConfig struct {
-	Name       string
-	Port       int
-	TargetAddr string
-	AllowedPKs []string
-}
-
 func setOf(keys []string) map[string]struct{} {
 	m := make(map[string]struct{}, len(keys))
 	for _, k := range keys {
 		m[k] = struct{}{}
 	}
 	return m
-}
-
-func portFromAddr(addr string) int {
-	_, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		return 0
-	}
-	var port int
-	fmt.Sscan(portStr, &port)
-	return port
 }

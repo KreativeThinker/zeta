@@ -77,8 +77,8 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if svc.Name == "" || svc.Target == "" || svc.Port == 0 {
-		writeError(w, http.StatusBadRequest, "name, target, and port are required")
+	if svc.Name == "" || svc.Target == "" {
+		writeError(w, http.StatusBadRequest, "name and target are required")
 		return
 	}
 
