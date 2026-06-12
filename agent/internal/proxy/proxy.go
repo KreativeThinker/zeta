@@ -114,11 +114,23 @@ func (m *Manager) Sync(services []ServiceConfig, ipToPK, ipToHost map[string]str
 	}
 }
 
+var meshCIDR = func() *net.IPNet {
+	_, cidr, _ := net.ParseCIDR("100.64.0.0/10")
+	return cidr
+}()
+
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	srcIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	directIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
+	}
+
+	srcIP := directIP
+	if !meshCIDR.Contains(net.ParseIP(directIP)) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			srcIP = strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
+		}
 	}
 
 	host := r.Host
