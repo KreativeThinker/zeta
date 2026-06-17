@@ -26,7 +26,7 @@ proto: ## Generate Go code from proto definitions
 
 .PHONY: proto-lint
 proto-lint: ## Lint proto files (requires buf)
-	cd proto && buf lint
+	buf lint
 
 # ── Frontend ───────────────────────────────────────────────────────────────────
 
