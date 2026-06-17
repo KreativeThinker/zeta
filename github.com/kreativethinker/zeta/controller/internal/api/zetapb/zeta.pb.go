@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.34.1
-// source: zeta.proto
+// source: proto/zeta.proto
 
 package zetapb
 
@@ -35,7 +35,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_zeta_proto_msgTypes[0]
+	mi := &file_proto_zeta_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +47,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[0]
+	mi := &file_proto_zeta_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +60,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{0}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *RegisterRequest) GetWgPublicKey() string {
@@ -111,7 +111,7 @@ type RegisterResponse struct {
 
 func (x *RegisterResponse) Reset() {
 	*x = RegisterResponse{}
-	mi := &file_zeta_proto_msgTypes[1]
+	mi := &file_proto_zeta_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -123,7 +123,7 @@ func (x *RegisterResponse) String() string {
 func (*RegisterResponse) ProtoMessage() {}
 
 func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[1]
+	mi := &file_proto_zeta_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -136,7 +136,7 @@ func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
 func (*RegisterResponse) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{1}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *RegisterResponse) GetResult() isRegisterResponse_Result {
@@ -190,7 +190,7 @@ type PendingAuth struct {
 
 func (x *PendingAuth) Reset() {
 	*x = PendingAuth{}
-	mi := &file_zeta_proto_msgTypes[2]
+	mi := &file_proto_zeta_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -202,7 +202,7 @@ func (x *PendingAuth) String() string {
 func (*PendingAuth) ProtoMessage() {}
 
 func (x *PendingAuth) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[2]
+	mi := &file_proto_zeta_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -215,7 +215,7 @@ func (x *PendingAuth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PendingAuth.ProtoReflect.Descriptor instead.
 func (*PendingAuth) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{2}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *PendingAuth) GetAuthUrl() string {
@@ -246,7 +246,7 @@ type NodeConfig struct {
 
 func (x *NodeConfig) Reset() {
 	*x = NodeConfig{}
-	mi := &file_zeta_proto_msgTypes[3]
+	mi := &file_proto_zeta_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -258,7 +258,7 @@ func (x *NodeConfig) String() string {
 func (*NodeConfig) ProtoMessage() {}
 
 func (x *NodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[3]
+	mi := &file_proto_zeta_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -271,7 +271,7 @@ func (x *NodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeConfig.ProtoReflect.Descriptor instead.
 func (*NodeConfig) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{3}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *NodeConfig) GetNodeId() string {
@@ -332,7 +332,7 @@ type SyncUpdate struct {
 
 func (x *SyncUpdate) Reset() {
 	*x = SyncUpdate{}
-	mi := &file_zeta_proto_msgTypes[4]
+	mi := &file_proto_zeta_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -344,7 +344,7 @@ func (x *SyncUpdate) String() string {
 func (*SyncUpdate) ProtoMessage() {}
 
 func (x *SyncUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[4]
+	mi := &file_proto_zeta_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -357,7 +357,7 @@ func (x *SyncUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncUpdate.ProtoReflect.Descriptor instead.
 func (*SyncUpdate) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{4}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *SyncUpdate) GetPayload() isSyncUpdate_Payload {
@@ -426,7 +426,7 @@ type EndpointUpdate struct {
 
 func (x *EndpointUpdate) Reset() {
 	*x = EndpointUpdate{}
-	mi := &file_zeta_proto_msgTypes[5]
+	mi := &file_proto_zeta_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -438,7 +438,7 @@ func (x *EndpointUpdate) String() string {
 func (*EndpointUpdate) ProtoMessage() {}
 
 func (x *EndpointUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[5]
+	mi := &file_proto_zeta_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -451,7 +451,7 @@ func (x *EndpointUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndpointUpdate.ProtoReflect.Descriptor instead.
 func (*EndpointUpdate) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{5}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *EndpointUpdate) GetNodeId() string {
@@ -480,7 +480,7 @@ type ServiceAnnounce struct {
 
 func (x *ServiceAnnounce) Reset() {
 	*x = ServiceAnnounce{}
-	mi := &file_zeta_proto_msgTypes[6]
+	mi := &file_proto_zeta_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -492,7 +492,7 @@ func (x *ServiceAnnounce) String() string {
 func (*ServiceAnnounce) ProtoMessage() {}
 
 func (x *ServiceAnnounce) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[6]
+	mi := &file_proto_zeta_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -505,7 +505,7 @@ func (x *ServiceAnnounce) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceAnnounce.ProtoReflect.Descriptor instead.
 func (*ServiceAnnounce) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{6}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ServiceAnnounce) GetServices() []*ServiceDecl {
@@ -527,7 +527,7 @@ type ServiceDecl struct {
 
 func (x *ServiceDecl) Reset() {
 	*x = ServiceDecl{}
-	mi := &file_zeta_proto_msgTypes[7]
+	mi := &file_proto_zeta_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -539,7 +539,7 @@ func (x *ServiceDecl) String() string {
 func (*ServiceDecl) ProtoMessage() {}
 
 func (x *ServiceDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[7]
+	mi := &file_proto_zeta_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -552,7 +552,7 @@ func (x *ServiceDecl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceDecl.ProtoReflect.Descriptor instead.
 func (*ServiceDecl) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{7}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ServiceDecl) GetName() string {
@@ -592,7 +592,7 @@ type PingUpdate struct {
 
 func (x *PingUpdate) Reset() {
 	*x = PingUpdate{}
-	mi := &file_zeta_proto_msgTypes[8]
+	mi := &file_proto_zeta_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -604,7 +604,7 @@ func (x *PingUpdate) String() string {
 func (*PingUpdate) ProtoMessage() {}
 
 func (x *PingUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[8]
+	mi := &file_proto_zeta_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -617,7 +617,7 @@ func (x *PingUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingUpdate.ProtoReflect.Descriptor instead.
 func (*PingUpdate) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{8}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *PingUpdate) GetNodeId() string {
@@ -642,7 +642,7 @@ type SyncResponse struct {
 
 func (x *SyncResponse) Reset() {
 	*x = SyncResponse{}
-	mi := &file_zeta_proto_msgTypes[9]
+	mi := &file_proto_zeta_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -654,7 +654,7 @@ func (x *SyncResponse) String() string {
 func (*SyncResponse) ProtoMessage() {}
 
 func (x *SyncResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[9]
+	mi := &file_proto_zeta_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -667,7 +667,7 @@ func (x *SyncResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncResponse.ProtoReflect.Descriptor instead.
 func (*SyncResponse) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{9}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SyncResponse) GetPayload() isSyncResponse_Payload {
@@ -738,7 +738,7 @@ type NetworkMap struct {
 
 func (x *NetworkMap) Reset() {
 	*x = NetworkMap{}
-	mi := &file_zeta_proto_msgTypes[10]
+	mi := &file_proto_zeta_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -750,7 +750,7 @@ func (x *NetworkMap) String() string {
 func (*NetworkMap) ProtoMessage() {}
 
 func (x *NetworkMap) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[10]
+	mi := &file_proto_zeta_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -763,7 +763,7 @@ func (x *NetworkMap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMap.ProtoReflect.Descriptor instead.
 func (*NetworkMap) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{10}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *NetworkMap) GetPeers() []*Peer {
@@ -803,7 +803,7 @@ type Peer struct {
 
 func (x *Peer) Reset() {
 	*x = Peer{}
-	mi := &file_zeta_proto_msgTypes[11]
+	mi := &file_proto_zeta_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -815,7 +815,7 @@ func (x *Peer) String() string {
 func (*Peer) ProtoMessage() {}
 
 func (x *Peer) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[11]
+	mi := &file_proto_zeta_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -828,7 +828,7 @@ func (x *Peer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Peer.ProtoReflect.Descriptor instead.
 func (*Peer) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{11}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Peer) GetNodeId() string {
@@ -900,7 +900,7 @@ type Service struct {
 
 func (x *Service) Reset() {
 	*x = Service{}
-	mi := &file_zeta_proto_msgTypes[12]
+	mi := &file_proto_zeta_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -912,7 +912,7 @@ func (x *Service) String() string {
 func (*Service) ProtoMessage() {}
 
 func (x *Service) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[12]
+	mi := &file_proto_zeta_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -925,7 +925,7 @@ func (x *Service) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Service.ProtoReflect.Descriptor instead.
 func (*Service) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{12}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Service) GetName() string {
@@ -959,7 +959,7 @@ type DNSConfig struct {
 
 func (x *DNSConfig) Reset() {
 	*x = DNSConfig{}
-	mi := &file_zeta_proto_msgTypes[13]
+	mi := &file_proto_zeta_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -971,7 +971,7 @@ func (x *DNSConfig) String() string {
 func (*DNSConfig) ProtoMessage() {}
 
 func (x *DNSConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[13]
+	mi := &file_proto_zeta_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -984,7 +984,7 @@ func (x *DNSConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DNSConfig.ProtoReflect.Descriptor instead.
 func (*DNSConfig) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{13}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DNSConfig) GetMeshDomain() string {
@@ -1010,7 +1010,7 @@ type RelayMap struct {
 
 func (x *RelayMap) Reset() {
 	*x = RelayMap{}
-	mi := &file_zeta_proto_msgTypes[14]
+	mi := &file_proto_zeta_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1022,7 +1022,7 @@ func (x *RelayMap) String() string {
 func (*RelayMap) ProtoMessage() {}
 
 func (x *RelayMap) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[14]
+	mi := &file_proto_zeta_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1035,7 +1035,7 @@ func (x *RelayMap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayMap.ProtoReflect.Descriptor instead.
 func (*RelayMap) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{14}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RelayMap) GetServers() []*RelayServer {
@@ -1057,7 +1057,7 @@ type RelayServer struct {
 
 func (x *RelayServer) Reset() {
 	*x = RelayServer{}
-	mi := &file_zeta_proto_msgTypes[15]
+	mi := &file_proto_zeta_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1069,7 +1069,7 @@ func (x *RelayServer) String() string {
 func (*RelayServer) ProtoMessage() {}
 
 func (x *RelayServer) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[15]
+	mi := &file_proto_zeta_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1082,7 +1082,7 @@ func (x *RelayServer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayServer.ProtoReflect.Descriptor instead.
 func (*RelayServer) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{15}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RelayServer) GetId() string {
@@ -1124,7 +1124,7 @@ type RelayOffer struct {
 
 func (x *RelayOffer) Reset() {
 	*x = RelayOffer{}
-	mi := &file_zeta_proto_msgTypes[16]
+	mi := &file_proto_zeta_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1136,7 +1136,7 @@ func (x *RelayOffer) String() string {
 func (*RelayOffer) ProtoMessage() {}
 
 func (x *RelayOffer) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[16]
+	mi := &file_proto_zeta_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1149,7 +1149,7 @@ func (x *RelayOffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayOffer.ProtoReflect.Descriptor instead.
 func (*RelayOffer) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{16}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RelayOffer) GetFromNodeId() string {
@@ -1177,7 +1177,7 @@ type ICESignal struct {
 
 func (x *ICESignal) Reset() {
 	*x = ICESignal{}
-	mi := &file_zeta_proto_msgTypes[17]
+	mi := &file_proto_zeta_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1189,7 +1189,7 @@ func (x *ICESignal) String() string {
 func (*ICESignal) ProtoMessage() {}
 
 func (x *ICESignal) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[17]
+	mi := &file_proto_zeta_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1202,7 +1202,7 @@ func (x *ICESignal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ICESignal.ProtoReflect.Descriptor instead.
 func (*ICESignal) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{17}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ICESignal) GetFromNodeId() string {
@@ -1236,7 +1236,7 @@ type ServerKeyResponse struct {
 
 func (x *ServerKeyResponse) Reset() {
 	*x = ServerKeyResponse{}
-	mi := &file_zeta_proto_msgTypes[18]
+	mi := &file_proto_zeta_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1248,7 +1248,7 @@ func (x *ServerKeyResponse) String() string {
 func (*ServerKeyResponse) ProtoMessage() {}
 
 func (x *ServerKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[18]
+	mi := &file_proto_zeta_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1261,7 +1261,7 @@ func (x *ServerKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerKeyResponse.ProtoReflect.Descriptor instead.
 func (*ServerKeyResponse) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{18}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ServerKeyResponse) GetPublicKey() string {
@@ -1279,7 +1279,7 @@ type Empty struct {
 
 func (x *Empty) Reset() {
 	*x = Empty{}
-	mi := &file_zeta_proto_msgTypes[19]
+	mi := &file_proto_zeta_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1291,7 +1291,7 @@ func (x *Empty) String() string {
 func (*Empty) ProtoMessage() {}
 
 func (x *Empty) ProtoReflect() protoreflect.Message {
-	mi := &file_zeta_proto_msgTypes[19]
+	mi := &file_proto_zeta_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1304,15 +1304,14 @@ func (x *Empty) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Empty.ProtoReflect.Descriptor instead.
 func (*Empty) Descriptor() ([]byte, []int) {
-	return file_zeta_proto_rawDescGZIP(), []int{19}
+	return file_proto_zeta_proto_rawDescGZIP(), []int{19}
 }
 
-var File_zeta_proto protoreflect.FileDescriptor
+var File_proto_zeta_proto protoreflect.FileDescriptor
 
-const file_zeta_proto_rawDesc = "" +
+const file_proto_zeta_proto_rawDesc = "" +
 	"\n" +
-	"\n" +
-	"zeta.proto\x12\azeta.v1\"\xa7\x01\n" +
+	"\x10proto/zeta.proto\x12\azeta.v1\"\xa7\x01\n" +
 	"\x0fRegisterRequest\x12\"\n" +
 	"\rwg_public_key\x18\x01 \x01(\tR\vwgPublicKey\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x0e\n" +
@@ -1416,19 +1415,19 @@ const file_zeta_proto_rawDesc = "" +
 	"\azeta.v1P\x01Z>github.com/kreativethinker/zeta/controller/internal/api/zetapbb\x06proto3"
 
 var (
-	file_zeta_proto_rawDescOnce sync.Once
-	file_zeta_proto_rawDescData []byte
+	file_proto_zeta_proto_rawDescOnce sync.Once
+	file_proto_zeta_proto_rawDescData []byte
 )
 
-func file_zeta_proto_rawDescGZIP() []byte {
-	file_zeta_proto_rawDescOnce.Do(func() {
-		file_zeta_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_zeta_proto_rawDesc), len(file_zeta_proto_rawDesc)))
+func file_proto_zeta_proto_rawDescGZIP() []byte {
+	file_proto_zeta_proto_rawDescOnce.Do(func() {
+		file_proto_zeta_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_zeta_proto_rawDesc), len(file_proto_zeta_proto_rawDesc)))
 	})
-	return file_zeta_proto_rawDescData
+	return file_proto_zeta_proto_rawDescData
 }
 
-var file_zeta_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
-var file_zeta_proto_goTypes = []any{
+var file_proto_zeta_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_proto_zeta_proto_goTypes = []any{
 	(*RegisterRequest)(nil),   // 0: zeta.v1.RegisterRequest
 	(*RegisterResponse)(nil),  // 1: zeta.v1.RegisterResponse
 	(*PendingAuth)(nil),       // 2: zeta.v1.PendingAuth
@@ -1450,7 +1449,7 @@ var file_zeta_proto_goTypes = []any{
 	(*ServerKeyResponse)(nil), // 18: zeta.v1.ServerKeyResponse
 	(*Empty)(nil),             // 19: zeta.v1.Empty
 }
-var file_zeta_proto_depIdxs = []int32{
+var file_proto_zeta_proto_depIdxs = []int32{
 	2,  // 0: zeta.v1.RegisterResponse.pending:type_name -> zeta.v1.PendingAuth
 	3,  // 1: zeta.v1.RegisterResponse.config:type_name -> zeta.v1.NodeConfig
 	5,  // 2: zeta.v1.SyncUpdate.endpoint:type_name -> zeta.v1.EndpointUpdate
@@ -1478,21 +1477,21 @@ var file_zeta_proto_depIdxs = []int32{
 	0,  // [0:14] is the sub-list for field type_name
 }
 
-func init() { file_zeta_proto_init() }
-func file_zeta_proto_init() {
-	if File_zeta_proto != nil {
+func init() { file_proto_zeta_proto_init() }
+func file_proto_zeta_proto_init() {
+	if File_proto_zeta_proto != nil {
 		return
 	}
-	file_zeta_proto_msgTypes[1].OneofWrappers = []any{
+	file_proto_zeta_proto_msgTypes[1].OneofWrappers = []any{
 		(*RegisterResponse_Pending)(nil),
 		(*RegisterResponse_Config)(nil),
 	}
-	file_zeta_proto_msgTypes[4].OneofWrappers = []any{
+	file_proto_zeta_proto_msgTypes[4].OneofWrappers = []any{
 		(*SyncUpdate_Endpoint)(nil),
 		(*SyncUpdate_Services)(nil),
 		(*SyncUpdate_Ping)(nil),
 	}
-	file_zeta_proto_msgTypes[9].OneofWrappers = []any{
+	file_proto_zeta_proto_msgTypes[9].OneofWrappers = []any{
 		(*SyncResponse_NetworkMap)(nil),
 		(*SyncResponse_Relay)(nil),
 		(*SyncResponse_IceSignal)(nil),
@@ -1501,17 +1500,17 @@ func file_zeta_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_zeta_proto_rawDesc), len(file_zeta_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_zeta_proto_rawDesc), len(file_proto_zeta_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_zeta_proto_goTypes,
-		DependencyIndexes: file_zeta_proto_depIdxs,
-		MessageInfos:      file_zeta_proto_msgTypes,
+		GoTypes:           file_proto_zeta_proto_goTypes,
+		DependencyIndexes: file_proto_zeta_proto_depIdxs,
+		MessageInfos:      file_proto_zeta_proto_msgTypes,
 	}.Build()
-	File_zeta_proto = out.File
-	file_zeta_proto_goTypes = nil
-	file_zeta_proto_depIdxs = nil
+	File_proto_zeta_proto = out.File
+	file_proto_zeta_proto_goTypes = nil
+	file_proto_zeta_proto_depIdxs = nil
 }
