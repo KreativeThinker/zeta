@@ -128,7 +128,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
 
-    implementation("com.wireguard.android:tunnel:1.0.20230706")
+    implementation(files("libs/vpnlib.aar"))
 
     implementation("io.grpc:grpc-kotlin-stub:1.4.1")
     implementation("io.grpc:grpc-okhttp:1.65.1")

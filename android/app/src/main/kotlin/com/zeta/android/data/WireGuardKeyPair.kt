@@ -1,6 +1,6 @@
 package com.zeta.android.data
 
-import com.wireguard.crypto.KeyPair
+import vpnlib.Vpnlib
 
 data class WireGuardKeyPair(
     val privateKey: String,
@@ -8,11 +8,9 @@ data class WireGuardKeyPair(
 ) {
     companion object {
         fun generate(): WireGuardKeyPair {
-            val kp = KeyPair()
-            return WireGuardKeyPair(
-                privateKey = kp.privateKey.toBase64(),
-                publicKey = kp.publicKey.toBase64(),
-            )
+            val priv = Vpnlib.generatePrivateKey()
+            val pub = Vpnlib.publicKey(priv)
+            return WireGuardKeyPair(privateKey = priv, publicKey = pub)
         }
     }
 }

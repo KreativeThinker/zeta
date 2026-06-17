@@ -4,21 +4,14 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.VpnService
+import android.os.ParcelFileDescriptor
+import android.util.Base64
 import android.util.Log
-import com.wireguard.android.backend.GoBackend
-import com.wireguard.android.backend.Tunnel
-import com.wireguard.config.Config
-import com.wireguard.config.InetNetwork
-import com.wireguard.config.Interface
-import com.wireguard.crypto.Key
-import zeta.v1.NetworkMap
 import com.zeta.android.MainActivity
 import com.zeta.android.ZetaApplication
 import com.zeta.android.net.StunClient
-import java.net.DatagramSocket
-import java.net.Inet4Address
-import java.net.InetAddress
-import java.net.InetSocketAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,8 +21,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import vpnlib.Vpnlib
+import zeta.v1.NetworkMap
+import java.net.DatagramSocket
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.InetSocketAddress
 
-class ZetaVpnService : GoBackend.VpnService() {
+class ZetaVpnService : VpnService() {
 
     inner class LocalBinder : android.os.Binder() {
         fun getService(): ZetaVpnService = this@ZetaVpnService
@@ -42,6 +42,9 @@ class ZetaVpnService : GoBackend.VpnService() {
     private val _vpnState = MutableStateFlow(VpnState.DISCONNECTED)
     val vpnState: StateFlow<VpnState> = _vpnState.asStateFlow()
 
+    private var vpnHandle = -1L // gomobile maps Go int → Java long
+    private var tunPfd: ParcelFileDescriptor? = null
+
     @Volatile private var cachedEndpoint: String? = null
 
     private fun setVpnState(state: VpnState) {
@@ -49,20 +52,8 @@ class ZetaVpnService : GoBackend.VpnService() {
         (application as ZetaApplication).vpnState.value = state
     }
 
-    private val zetaTunnel = object : Tunnel {
-        override fun getName() = "zeta"
-        override fun onStateChange(newState: Tunnel.State) {
-            setVpnState(when (newState) {
-                Tunnel.State.UP -> VpnState.CONNECTED
-                Tunnel.State.DOWN -> VpnState.DISCONNECTED
-                Tunnel.State.TOGGLE -> VpnState.CONNECTING
-            })
-        }
-    }
-
     override fun onBind(intent: android.content.Intent?): android.os.IBinder {
-        // GoBackend.VpnService.onBind handles VPN binding; our LocalBinder is for Activity use.
-        return if (intent?.action == SERVICE_INTERFACE) super.onBind(intent)!!
+        return if (intent?.action == SERVICE_INTERFACE) super.onBind(intent) ?: binder
         else binder
     }
 
@@ -81,14 +72,14 @@ class ZetaVpnService : GoBackend.VpnService() {
         setVpnState(VpnState.CONNECTING)
         startForeground(NOTIF_ID, buildNotification("Connecting…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
 
-        // All network I/O and WireGuard setup runs on the IO thread — doing any of this
-        // on the main thread (onStartCommand) throws NetworkOnMainThreadException.
         syncJob = serviceScope.launch {
-            // Discover STUN endpoint before WireGuard starts (port 51820 is still free).
+            // Capture upstream DNS before establishing the VPN (100.64.0.1 not yet active).
+            val upstream = getSystemUpstreamDns() ?: "1.1.1.1:53"
+
+            // Pre-VPN STUN: discover our WireGuard endpoint before the TUN intercepts traffic.
             val preVpnEndpoint: String? = try {
-                val ipv4Any = InetAddress.getByName("0.0.0.0") as Inet4Address
                 val socket = DatagramSocket(null).apply {
-                    bind(InetSocketAddress(ipv4Any, WG_LISTEN_PORT))
+                    bind(InetSocketAddress(InetAddress.getByName("0.0.0.0") as Inet4Address, WG_LISTEN_PORT))
                 }
                 val ep = socket.use { StunClient.discoverWithSocket(it) }
                 Log.i(TAG, "Pre-VPN STUN → $ep")
@@ -99,16 +90,26 @@ class ZetaVpnService : GoBackend.VpnService() {
             }
             cachedEndpoint = preVpnEndpoint
 
-            val initialConfig = buildWgConfig(state.wgPrivateKey, state.meshIp, emptyList())
-            try {
-                app.wgBackend.setState(zetaTunnel, Tunnel.State.UP, initialConfig)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start WireGuard tunnel", e)
+            val pfd = Builder()
+                .setSession("zeta")
+                .addAddress(state.meshIp, 10)
+                .addRoute("100.64.0.0", 10)
+                .addDnsServer("100.64.0.1")
+                .addSearchDomain(state.domain)
+                .setMtu(1280)
+                .establish() ?: run { stopSelf(); return@launch }
+            tunPfd = pfd
+
+            // detachFd() transfers ownership to our Go library — pfd must not be closed.
+            val fd = pfd.detachFd()
+            vpnHandle = Vpnlib.start(fd.toLong(), 1280L, buildWgConf(state.wgPrivateKey, emptyList()), upstream)
+            if (vpnHandle < 0L) {
+                Log.e(TAG, "vpnlib start failed: ${Vpnlib.error()}")
                 setVpnState(VpnState.ERROR)
                 stopSelf()
                 return@launch
             }
-
+            setVpnState(VpnState.CONNECTED)
             updateNotification("Connected — ${state.meshIp}")
 
             app.repository.startSyncLoop(
@@ -119,22 +120,15 @@ class ZetaVpnService : GoBackend.VpnService() {
         }
     }
 
-    // Called from the sync coroutine — protect() exempts the socket from the VPN TUN
-    // so the packet goes out via the real network interface, not tun0.
-    // Binds to an ephemeral port (WG_LISTEN_PORT is already owned by WireGuard), then
-    // substitutes WG_LISTEN_PORT into the result so the reported endpoint matches the
-    // port that WireGuard is actually listening on. Falls back to the last known good
-    // endpoint so the coordinator always has something to work with.
+    // Discover our public endpoint after VPN is up. protect() exempts the socket from the TUN.
     private fun discoverProtectedEndpoint(): String? {
         val ep = try {
-            val ipv4Any = InetAddress.getByName("0.0.0.0") as Inet4Address
             val socket = DatagramSocket(null).apply {
-                bind(InetSocketAddress(ipv4Any, 0))
+                bind(InetSocketAddress(InetAddress.getByName("0.0.0.0") as Inet4Address, 0))
             }
             protect(socket)
             val raw = socket.use { StunClient.discoverWithSocket(it) }
-            // STUN reflects the ephemeral port; replace it with WG_LISTEN_PORT so peers
-            // can reach WireGuard's actual socket (symmetric-NAT issue otherwise).
+            // Replace ephemeral port with WG_LISTEN_PORT so peers reach WireGuard's actual socket.
             raw?.let { "${it.substringBeforeLast(":")}:$WG_LISTEN_PORT" }
         } catch (e: Exception) {
             Log.w(TAG, "Protected STUN failed: ${e.message}")
@@ -145,58 +139,65 @@ class ZetaVpnService : GoBackend.VpnService() {
             Log.i(TAG, "Protected STUN → $ep")
             ep
         } else {
-            Log.w(TAG, "Protected STUN returned null, using cached endpoint: $cachedEndpoint")
+            Log.w(TAG, "Protected STUN null, using cached: $cachedEndpoint")
             cachedEndpoint
         }
     }
 
+    private fun applyNetworkMap(nm: NetworkMap, selfMeshIp: String) {
+        val state = (application as ZetaApplication).repository.nodeState ?: return
+        val peers = nm.peersList.filter { it.meshIp != selfMeshIp }
+        Vpnlib.setConfig(vpnHandle, buildWgConf(state.wgPrivateKey, peers))
+        Vpnlib.setDNSRecords(vpnHandle, buildDnsJson(nm))
+    }
+
+    private fun buildWgConf(privateKeyB64: String, peers: List<zeta.v1.Peer>): String = buildString {
+        append("private_key=${base64ToHex(privateKeyB64)}\n")
+        append("listen_port=$WG_LISTEN_PORT\n")
+        append("replace_peers=true\n")
+        for (peer in peers) {
+            if (peer.wgPublicKey.isBlank() || peer.meshIp.isBlank()) continue
+            append("public_key=${base64ToHex(peer.wgPublicKey)}\n")
+            append("allowed_ip=${peer.meshIp}/32\n")
+            append("persistent_keepalive_interval=25\n")
+            if (peer.endpoint.isNotBlank()) append("endpoint=${peer.endpoint}\n")
+        }
+    }
+
+    private fun buildDnsJson(nm: NetworkMap): String {
+        val meshDomain = nm.dns?.meshDomain?.takeIf { it.isNotBlank() } ?: "mesh"
+        val map = mutableMapOf<String, String>()
+        for (peer in nm.peersList) {
+            if (peer.hostname.isBlank() || peer.meshIp.isBlank()) continue
+            map["${peer.hostname}.$meshDomain"] = peer.meshIp
+            for (svc in peer.servicesList) {
+                if (svc.name.isNotBlank()) map["${svc.name}.${peer.hostname}.$meshDomain"] = peer.meshIp
+            }
+        }
+        return JSONObject(map as Map<*, *>).toString()
+    }
+
+    private fun getSystemUpstreamDns(): String? {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val props = cm.getLinkProperties(cm.activeNetwork) ?: return null
+        return props.dnsServers.firstOrNull()?.hostAddress?.let { "$it:53" }
+    }
+
+    private fun base64ToHex(b64: String): String =
+        Base64.decode(b64, Base64.DEFAULT).joinToString("") { "%02x".format(it) }
+
     private fun stopVpn() {
         syncJob?.cancel()
         syncJob = null
-        try {
-            (application as ZetaApplication).wgBackend.setState(zetaTunnel, Tunnel.State.DOWN, null)
-        } catch (_: Exception) {}
+        if (vpnHandle >= 0L) {
+            Vpnlib.stop(vpnHandle)
+            vpnHandle = -1L
+        }
+        tunPfd?.close()
+        tunPfd = null
         setVpnState(VpnState.DISCONNECTED)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
-    }
-
-    private fun applyNetworkMap(nm: NetworkMap, selfMeshIp: String) {
-        val state = (application as ZetaApplication).repository.nodeState ?: return
-        val protoPeers = nm.peersList.filter { it.meshIp != selfMeshIp }
-        val config = buildWgConfig(state.wgPrivateKey, state.meshIp, protoPeers)
-        try {
-            (application as ZetaApplication).wgBackend.setState(zetaTunnel, Tunnel.State.UP, config)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to apply peer update", e)
-        }
-    }
-
-    private fun buildWgConfig(privateKeyB64: String, meshIp: String, protoPeers: List<zeta.v1.Peer>): Config {
-        val iface = Interface.Builder()
-            .parsePrivateKey(privateKeyB64)
-            .addAddress(InetNetwork.parse("$meshIp/10"))
-            .setListenPort(WG_LISTEN_PORT)
-            .build()
-
-        val wgPeers = protoPeers.mapNotNull { peer ->
-            if (peer.wgPublicKey.isBlank() || peer.meshIp.isBlank()) return@mapNotNull null
-            runCatching {
-                val pb = com.wireguard.config.Peer.Builder()
-                    .setPublicKey(Key.fromBase64(peer.wgPublicKey))
-                    .addAllowedIp(InetNetwork.parse("${peer.meshIp}/32"))
-                    .setPersistentKeepalive(25)
-                if (peer.endpoint.isNotBlank()) {
-                    runCatching { pb.parseEndpoint(peer.endpoint) }
-                }
-                pb.build()
-            }.getOrNull()
-        }
-
-        return Config.Builder()
-            .setInterface(iface)
-            .addPeers(wgPeers)
-            .build()
     }
 
     private fun buildNotification(text: String): Notification {
@@ -221,7 +222,8 @@ class ZetaVpnService : GoBackend.VpnService() {
 
     override fun onDestroy() {
         serviceScope.cancel()
-        runCatching { (application as ZetaApplication).wgBackend.setState(zetaTunnel, Tunnel.State.DOWN, null) }
+        if (vpnHandle >= 0L) Vpnlib.stop(vpnHandle)
+        tunPfd?.close()
         super.onDestroy()
     }
 
