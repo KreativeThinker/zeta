@@ -72,10 +72,14 @@ fun MeshWebViewScreen(
                                 view: WebView,
                                 request: WebResourceRequest,
                             ): WebResourceResponse? {
+                                // Only intercept requests destined for mesh hosts.
+                                // External resources (CDN fonts, analytics, etc.) pass through
+                                // to the WebView's native HTTP stack — intercepting them would
+                                // proxy them to the mesh agent (wrong) and cause 502 retry loops.
+                                val requestHost = request.url.host ?: return null
+                                if (!requestHost.endsWith(".mesh")) return null
+
                                 return runCatching {
-                                    // Rewrite every request URL to meshHost:1080 so all
-                                    // page resources (CSS, JS, images) also go through the
-                                    // mesh proxy regardless of what URL the page references.
                                     // Build the string directly — Uri.Builder.authority()
                                     // encodes the colon in "host:port" as %3A, which OkHttp rejects.
                                     val path = request.url.path?.takeIf { it.isNotEmpty() } ?: "/"

@@ -44,14 +44,19 @@ class ZetaVpnService : GoBackend.VpnService() {
 
     @Volatile private var cachedEndpoint: String? = null
 
+    private fun setVpnState(state: VpnState) {
+        _vpnState.value = state
+        (application as ZetaApplication).vpnState.value = state
+    }
+
     private val zetaTunnel = object : Tunnel {
         override fun getName() = "zeta"
         override fun onStateChange(newState: Tunnel.State) {
-            _vpnState.value = when (newState) {
+            setVpnState(when (newState) {
                 Tunnel.State.UP -> VpnState.CONNECTED
                 Tunnel.State.DOWN -> VpnState.DISCONNECTED
                 Tunnel.State.TOGGLE -> VpnState.CONNECTING
-            }
+            })
         }
     }
 
@@ -73,7 +78,7 @@ class ZetaVpnService : GoBackend.VpnService() {
         val app = application as ZetaApplication
         val state = app.repository.nodeState ?: run { stopSelf(); return }
 
-        _vpnState.value = VpnState.CONNECTING
+        setVpnState(VpnState.CONNECTING)
         startForeground(NOTIF_ID, buildNotification("Connecting…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
 
         // All network I/O and WireGuard setup runs on the IO thread — doing any of this
@@ -99,7 +104,7 @@ class ZetaVpnService : GoBackend.VpnService() {
                 app.wgBackend.setState(zetaTunnel, Tunnel.State.UP, initialConfig)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start WireGuard tunnel", e)
-                _vpnState.value = VpnState.ERROR
+                setVpnState(VpnState.ERROR)
                 stopSelf()
                 return@launch
             }
@@ -151,7 +156,7 @@ class ZetaVpnService : GoBackend.VpnService() {
         try {
             (application as ZetaApplication).wgBackend.setState(zetaTunnel, Tunnel.State.DOWN, null)
         } catch (_: Exception) {}
-        _vpnState.value = VpnState.DISCONNECTED
+        setVpnState(VpnState.DISCONNECTED)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }

@@ -8,6 +8,7 @@ import com.zeta.android.data.StateManager
 import com.zeta.android.net.MeshDnsResolver
 import com.zeta.android.repository.ZetaRepository
 import com.zeta.android.vpn.ZetaVpnService
+import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 
 class ZetaApplication : Application() {
@@ -16,6 +17,9 @@ class ZetaApplication : Application() {
     lateinit var okHttpClient: OkHttpClient
     lateinit var wgBackend: GoBackend
     val meshDnsResolver = MeshDnsResolver()
+
+    // Shared VPN state visible to UI without needing to bind to the service.
+    val vpnState = MutableStateFlow(ZetaVpnService.VpnState.DISCONNECTED)
 
     override fun onCreate() {
         super.onCreate()

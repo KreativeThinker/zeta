@@ -30,16 +30,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.zeta.android.ZetaApplication
 import com.zeta.android.repository.ZetaRepository
 import com.zeta.android.ui.theme.JetBrainsMonoFamily
 import com.zeta.android.ui.theme.ZetaDanger
@@ -56,9 +52,12 @@ fun DashboardScreen(
     onForgotDevice: () -> Unit,
 ) {
     val context = LocalContext.current
+    val app = context.applicationContext as ZetaApplication
     val nodeState by repository.nodeStateFlow.collectAsState()
     val networkMap: NetworkMap? by repository.networkMapFlow.collectAsState()
-    var vpnConnected by remember { mutableStateOf(false) }
+    val vpnState by app.vpnState.collectAsState()
+    val vpnConnected = vpnState == ZetaVpnService.VpnState.CONNECTED
+    val vpnConnecting = vpnState == ZetaVpnService.VpnState.CONNECTING
 
     val vpnPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -67,7 +66,6 @@ fun DashboardScreen(
             context.startForegroundService(
                 Intent(context, ZetaVpnService::class.java).setAction(ZetaVpnService.ACTION_START),
             )
-            vpnConnected = true
         }
     }
 
@@ -146,21 +144,26 @@ fun DashboardScreen(
             }
 
             // VPN toggle
-            if (vpnConnected) {
-                Button(
+            when {
+                vpnConnected -> Button(
                     onClick = {
                         context.startService(
                             Intent(context, ZetaVpnService::class.java).setAction(ZetaVpnService.ACTION_STOP),
                         )
-                        vpnConnected = false
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = ZetaDanger),
                 ) {
                     Text("Disconnect")
                 }
-            } else {
-                Button(
+                vpnConnecting -> Button(
+                    onClick = {},
+                    enabled = false,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Connecting…")
+                }
+                else -> Button(
                     onClick = {
                         val prepareIntent = VpnService.prepare(context)
                         if (prepareIntent != null) {
@@ -169,7 +172,6 @@ fun DashboardScreen(
                             context.startForegroundService(
                                 Intent(context, ZetaVpnService::class.java).setAction(ZetaVpnService.ACTION_START),
                             )
-                            vpnConnected = true
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
