@@ -1,6 +1,6 @@
 # Zeta
 
-A self-hostable mesh VPN built on WireGuard. Enroll any Linux device with a preauth key and it joins a private mesh network — traffic between peers is direct WireGuard tunnels, no coordinator in the data path.
+A self-hostable mesh VPN built on WireGuard. Enroll any Linux device or Android phone with a preauth key and it joins a private mesh network — traffic between peers is direct WireGuard tunnels, no coordinator in the data path.
 
 ```
 ┌──────────────────────────────┐
@@ -8,11 +8,12 @@ A self-hostable mesh VPN built on WireGuard. Enroll any Linux device with a prea
 │  SQLite · CA · NetworkMap    │  gRPC sync       :50051
 └──────────────┬───────────────┘
                │ control plane only
-     ┌─────────┴──────────┐
-     ▼                    ▼
-┌─────────┐          ┌─────────┐
-│ Agent A │◄────────►│ Agent B │   WireGuard  100.64.x.x/10
-└─────────┘          └─────────┘   peer-to-peer data plane
+     ┌─────────┼──────────┐
+     ▼         ▼          ▼
+┌─────────┐ ┌─────────┐ ┌─────────┐
+│ Agent A │◄►│ Agent B │◄►│Android │   WireGuard  100.64.x.x/10
+│ (Linux) │ │ (Linux) │ │ client │   peer-to-peer data plane
+└─────────┘ └─────────┘ └─────────┘
 ```
 
 The coordinator handles enrollment, key distribution, and network map updates. Once peers know each other's WireGuard keys, they communicate directly — the coordinator is not in the data path.
@@ -44,11 +45,12 @@ Admin UI: `http://localhost:8080`
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — control plane vs data plane, enrollment flow, service announcement, DNS and proxy internals
+- [Architecture](docs/architecture.md) — control plane vs data plane, enrollment flow, service announcement, DNS, proxy, Android client internals
 - [Controller](docs/controller.md) — configuration, REST API reference, database schema
 - [Agent](docs/agent.md) — configuration, zetafile service definitions, proxy, management API
 - [Security](docs/security.md) — threat model, ACL enforcement, revocation, limitations
 - [Deployment](docs/deployment.md) — Docker Compose, systemd, Caddy integration, production checklist
+- [Development](docs/development.md) — environment setup, build commands, workflow for all components
 
 ---
 
@@ -56,7 +58,7 @@ Admin UI: `http://localhost:8080`
 
 ```
 zeta/
-├── agent/          Linux agent
+├── agent/          Linux agent (Go)
 │   ├── cmd/agent/
 │   └── internal/
 │       ├── agentapi/ Agent management UI + REST API
@@ -68,7 +70,10 @@ zeta/
 │       ├── route/    netlink mesh route management
 │       ├── state/    WG keypair + cert persistence
 │       └── wg/       WireGuard interface management
-├── controller/     Coordination server
+├── android/        Android client (Kotlin + Go)
+│   ├── app/        Android app module (Compose UI, VpnService, gRPC sync)
+│   └── vpnlib/     Go module — WireGuard + split DNS, compiled to AAR
+├── controller/     Coordination server (Go)
 │   ├── cmd/server/
 │   └── internal/
 │       ├── api/      gRPC + REST handlers, session auth

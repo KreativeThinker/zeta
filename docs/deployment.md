@@ -254,3 +254,12 @@ Individual targets:
 | `make clean` | Remove build artifacts |
 
 During development, run `make controller-dev` and `make ui-dev` in separate terminals. The frontend proxies API requests to `localhost:8080`.
+
+### Android
+
+The Android APK requires the Android SDK, NDK, and `gomobile`. See [Development Guide](development.md#android-client) for the full setup. The pre-built `vpnlib.aar` is committed to the repo — you only need to rebuild it if you change Go code under `android/vpnlib/`.
+
+```bash
+cd android
+./gradlew assembleDebug
+```

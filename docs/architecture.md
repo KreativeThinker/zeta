@@ -212,3 +212,61 @@ Access events (allowed and denied) are recorded in a ring buffer and exposed via
       ▼
 [shire backend: 127.0.0.1:9010]
 ```
+
+---
+
+## Android client
+
+The Android client participates in the mesh as a full peer. It uses a different DNS delivery mechanism than the Linux agent — Android non-root apps cannot bind port 53, so a split DNS server inside the app is not viable.
+
+### Architecture
+
+```
+ZetaVpnService  (android.net.VpnService)
+  │
+  │  VpnService.Builder
+  │    .addAddress(<mesh_ip>, 10)
+  │    .addRoute("100.64.0.0", 10)   ← only mesh CIDR goes through TUN
+  │    .addDnsServer("100.64.0.1")   ← virtual DNS IP, no real host
+  │    .establish()  →  TUN fd
+  │
+  │  fd.detachFd()  →  passed to Go library
+  │
+  ▼
+┌──────────────────────────────────────────────────┐
+│  libzetavpn.so  (vpnlib Go module, gomobile AAR)  │
+│                                                   │
+│  androidTUN  (plain read/write on fd, no ioctl)   │
+│       │                                           │
+│  FilteredTUN.Read()                               │
+│  ├─ UDP dst=100.64.0.1:53?                        │
+│  │   YES → DNSHandler                             │
+│  │         ├─ *.mesh → sync.Map lookup            │
+│  │         │           → synthesise A reply       │
+│  │         │           → write reply to TUN       │
+│  │         └─ other  → forward to upstream DNS    │
+│  │                     → write reply to TUN       │
+│  └─ NO  → pass to wireguard-go device.Device      │
+│                                                   │
+│  device.NewDevice(FilteredTUN, ...)               │
+└──────────────────────────────────────────────────┘
+```
+
+### Why TUN-level DNS interception
+
+`VpnService.Builder.addDnsServer("100.64.0.1")` tells Android to route all DNS queries from all apps to port 53 on the virtual IP `100.64.0.1`. A non-root app cannot bind port 53 directly. Instead, the Go library reads raw IP packets from the TUN fd: DNS queries appear as UDP packets with destination `100.64.0.1:53`. The library intercepts, answers, and writes the reply packet directly back into the TUN — bypassing wireguard-go entirely for DNS traffic.
+
+### Split tunnel
+
+Only the mesh CIDR (`100.64.0.0/10`) is routed through the VPN TUN. WireGuard peer endpoints and the upstream DNS server are on public IPs outside this range, so they route via the physical interface without looping through the TUN. `protect()` is not needed.
+
+### TUNGETIFF constraint
+
+Android VPN fds do not support the `TUNGETIFF` ioctl (requires `CAP_NET_ADMIN`). wireguard-go's `tun.CreateTUNFromFile` calls this ioctl to read the interface name and fails with `EPERM`. The vpnlib uses a custom `androidTUN` implementation that delegates only to `read()`/`write()` system calls and returns a static name — no ioctl involved.
+
+### DNS record lifecycle
+
+1. `ZetaVpnService.startVpn()` captures the system upstream DNS before `establish()` (once `100.64.0.1` is active as a DNS server, the system DNS changes).
+2. On each `NetworkMap` push, `buildDnsJson()` serialises all peer hostnames and service names to a JSON map and calls `Vpnlib.setDNSRecords()`.
+3. The Go layer atomically replaces its `sync.Map` with the new records.
+4. When the VPN tears down, `100.64.0.1` is removed from Android's DNS configuration and the system reverts to its default resolver.
