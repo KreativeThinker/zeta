@@ -1,0 +1,5 @@
+-keep class zeta.v1.** { *; }
+-keep class com.google.protobuf.** { *; }
+-dontwarn io.grpc.**
+-dontwarn com.wireguard.**
+-keep class com.wireguard.** { *; }

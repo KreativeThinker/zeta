@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Z lettermark for Zeta -->
+    <path
+        android:fillColor="#2E2E2E"
+        android:pathData="M28,32 L80,32 L80,42 L44,66 L80,66 L80,76 L28,76 L28,66 L64,42 L28,42 Z" />
+</vector>

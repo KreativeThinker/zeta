@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Allow cleartext HTTP to the mesh CIDR (100.64.0.0/10).
+        All traffic to these addresses travels inside the WireGuard tunnel,
+        so there is no unencrypted exposure on the physical network.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">mesh</domain>
+    </domain-config>
+</network-security-config>

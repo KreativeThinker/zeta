@@ -3,6 +3,8 @@ syntax = "proto3";
 package zeta.v1;
 
 option go_package = "github.com/kreativethinker/zeta/controller/internal/api/zetapb";
+option java_multiple_files = true;
+option java_package = "zeta.v1";
 
 // Coordinator
 service CoordinatorService {
@@ -37,8 +39,8 @@ message NodeConfig {
   string mesh_ip = 2;
   string domain = 3;
   bytes cert_pem = 4; // device certificate (PEM)
-  bytes ca_pem = 5;   // coordinator CA root (PEM)
-  bytes key_pem = 6;  // device private key (PEM); phase 3 will replace with CSR flow
+  bytes ca_pem = 5; // coordinator CA root (PEM)
+  bytes key_pem = 6; // device private key (PEM); phase 3 will replace with CSR flow
 }
 
 // Sync Streams
@@ -66,7 +68,7 @@ message ServiceAnnounce {
 message ServiceDecl {
   string name = 1;
   uint32 port = 2;
-  string target_addr = 3;              // local address to proxy to, e.g. "172.17.0.2:3000"
+  string target_addr = 3; // local address to proxy to, e.g. "172.17.0.2:3000"
   repeated string allowed_hostnames = 4; // ["user:graveyard", "user:shire"]
 }
 
