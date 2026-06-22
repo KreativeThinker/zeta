@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,7 +17,8 @@ type Config struct {
 }
 
 type ProxyConfig struct {
-	Addr string `yaml:"addr"`
+	Addr           string   `yaml:"addr"`
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 type HTTPConfig struct {
@@ -88,6 +90,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("ZETA_PROXY_ADDR"); v != "" {
 		cfg.Proxy.Addr = v
+	}
+	if v := os.Getenv("ZETA_PROXY_TRUSTED"); v != "" {
+		cfg.Proxy.TrustedProxies = strings.Split(v, ",")
 	}
 
 	return cfg, nil

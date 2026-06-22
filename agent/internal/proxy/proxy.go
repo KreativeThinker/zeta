@@ -24,10 +24,11 @@ type AccessEvent struct {
 
 // Manager runs a single HTTP reverse proxy that routes by Host header.
 type Manager struct {
-	mu       sync.RWMutex
-	routes   map[string]*route // service name → route
-	ipToPK   map[string]string
-	ipToHost map[string]string
+	mu           sync.RWMutex
+	routes       map[string]*route // service name → route
+	ipToPK       map[string]string
+	ipToHost     map[string]string
+	trustedNets  []*net.IPNet
 
 	server *http.Server
 
@@ -54,6 +55,29 @@ func New() *Manager {
 		ipToPK:   make(map[string]string),
 		ipToHost: make(map[string]string),
 	}
+}
+
+// SetTrustedProxies configures CIDRs (or single IPs with /32) whose
+// X-Forwarded-For header is trusted to carry the real client IP.
+// Loopback addresses are always trusted regardless of this list.
+// The local mesh IP should be included so that a reverse proxy like Caddy
+// running on the same host is handled correctly.
+func (m *Manager) SetTrustedProxies(cidrs []string) {
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		if !strings.Contains(cidr, "/") {
+			cidr += "/32"
+		}
+		_, n, err := net.ParseCIDR(cidr)
+		if err != nil {
+			slog.Warn("proxy: ignoring invalid trusted proxy CIDR", "cidr", cidr, "err", err)
+			continue
+		}
+		nets = append(nets, n)
+	}
+	m.mu.Lock()
+	m.trustedNets = nets
+	m.mu.Unlock()
 }
 
 // Start begins listening on addr. Must be called once before Sync has any effect.
@@ -127,7 +151,8 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	srcIP := directIP
-	if !meshCIDR.Contains(net.ParseIP(directIP)) {
+	parsed := net.ParseIP(directIP)
+	if m.isTrustedProxy(parsed) || !meshCIDR.Contains(parsed) {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			srcIP = strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
 		}
@@ -184,6 +209,26 @@ func (m *Manager) record(ev AccessEvent) {
 		m.events = m.events[1:]
 	}
 	m.events = append(m.events, ev)
+}
+
+// isTrustedProxy returns true when ip is a loopback address or matches one of
+// the configured trusted proxy CIDRs. These are sources whose X-Forwarded-For
+// header should be used to determine the real client IP.
+func (m *Manager) isTrustedProxy(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, n := range m.trustedNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func setOf(keys []string) map[string]struct{} {

@@ -119,6 +119,11 @@ func main() {
 	defer resolver.Stop()
 
 	proxyMgr := proxy.New()
+	// Always trust the local mesh IP as a proxy source so that a reverse proxy
+	// like Caddy running on the same host (connecting via the mesh IP) has its
+	// X-Forwarded-For header honoured to identify the real mesh client.
+	trustedProxies := append(cfg.Proxy.TrustedProxies, st.MeshIP)
+	proxyMgr.SetTrustedProxies(trustedProxies)
 	if err := proxyMgr.Start(cfg.Proxy.Addr); err != nil {
 		slog.Error("starting proxy", "err", err)
 		os.Exit(1)
