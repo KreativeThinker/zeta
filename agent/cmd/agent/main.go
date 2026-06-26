@@ -27,7 +27,7 @@ import (
 
 func main() {
 	cfgPath := flag.String("config", "", "path to zeta-agent.yaml (optional)")
-	zetafilePath := flag.String("zetafile", "", "path to zetafile.yml (default: ./zetafile.yml)")
+	zetafilePath := flag.String("zetafile", "", "path to zetafile (default: searches zetafile.yml, config.zeta, zetafile.conf)")
 	preauthKey := flag.String("preauth-key", "", "enrollment token (required on first run)")
 	coordAddr := flag.String("coordinator", "", "override coordinator address")
 	flag.Parse()
@@ -100,7 +100,8 @@ func main() {
 		slog.Warn("adding mesh route", "err", err)
 	}
 
-	zf, err := config.LoadZetafile(*zetafilePath)
+	resolvedZetafilePath := config.ResolveZetafilePath(*zetafilePath)
+	zf, err := config.LoadZetafile(resolvedZetafilePath)
 	if err != nil {
 		slog.Warn("loading zetafile", "err", err)
 		zf = &config.Zetafile{}
@@ -130,15 +131,14 @@ func main() {
 	}
 	defer proxyMgr.Stop()
 
-	// Agent HTTP UI — sendCh is not yet open here; announceServices is called
-	// inside runSyncLoop. We pass a callback that gets wired once the stream opens.
 	var sendChRef chan<- *zetapb.SyncUpdate
-	agentHandler := agentapi.New(st, *zetafilePath, proxyMgr, func(updated *config.Zetafile) {
+	onZetafileChange := func(updated *config.Zetafile) {
 		zf = updated
 		if sendChRef != nil {
 			announceServices(sendChRef, updated)
 		}
-	})
+	}
+	agentHandler := agentapi.New(st, resolvedZetafilePath, proxyMgr, onZetafileChange)
 	go func() {
 		slog.Info("agent UI listening", "addr", cfg.HTTP.Addr)
 		if err := http.ListenAndServe(cfg.HTTP.Addr, agentHandler); err != nil {
@@ -148,6 +148,12 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	if err := config.WatchZetafile(ctx, resolvedZetafilePath, onZetafileChange); err != nil {
+		slog.Warn("zetafile hot-reload unavailable", "err", err)
+	} else {
+		slog.Info("watching zetafile for changes", "path", resolvedZetafilePath)
+	}
 
 	slog.Info("zeta agent up", "interface", cfg.WireGuard.Interface, "mesh_ip", st.MeshIP)
 
@@ -222,19 +228,14 @@ func runSyncLoop(
 		}
 		backoff = time.Second
 
-		// streamCtx is cancelled when this stream attempt ends (disconnect or shutdown).
-		// It stops the per-stream goroutines before we close sendCh.
 		streamCtx, streamCancel := context.WithCancel(ctx)
 
-		// Expose sendCh to the agent API callback so UI-triggered changes can re-announce.
 		*sendChPtr = sendCh
 
-		// Announce services declared in zetafile.yml immediately on connect.
 		if len(zf.Services) > 0 {
 			announceServices(sendCh, zf)
 		}
 
-		// STUN loop: discover external endpoint every 30s and report to coordinator.
 		stunDone := make(chan struct{})
 		go func() {
 			defer close(stunDone)
@@ -251,7 +252,6 @@ func runSyncLoop(
 			}
 		}()
 
-		// Ping loop: keepalive every 30s.
 		pingDone := make(chan struct{})
 		go func() {
 			defer close(pingDone)
@@ -281,7 +281,6 @@ func runSyncLoop(
 				return
 			case msg, ok := <-recvCh:
 				if !ok {
-					// Stream disconnected — stop goroutines, then reconnect.
 					*sendChPtr = nil
 					streamCancel()
 					<-stunDone
@@ -355,8 +354,6 @@ func handleSyncResponse(
 	case *zetapb.SyncResponse_NetworkMap:
 		nm := p.NetworkMap
 
-		// Build mesh-IP → pubkey and mesh-IP → hostname maps for proxy ACL/logging.
-		// Include self so the proxy can identify connections from the local mesh IP.
 		selfHostname := st.Domain
 		if idx := strings.Index(selfHostname, "."); idx != -1 {
 			selfHostname = selfHostname[:idx]
@@ -385,10 +382,7 @@ func handleSyncResponse(
 			resolver.UpdateFromNetworkMap(nm.Peers, nm.Dns.MeshDomain)
 		}
 
-		// Reconcile proxy listeners for services this agent hosts (from zetafile).
-		// allowed_pubkeys come from the NetworkMap (resolved by coordinator).
 		if len(zf.Services) > 0 {
-			// Build a name→allowedPKs index from the NetworkMap (our own peer entry).
 			svcPKs := make(map[string][]string)
 			for _, peer := range nm.Peers {
 				if peer.NodeId == st.NodeID {
