@@ -125,7 +125,7 @@ func main() {
 	defer proxyMgr.Stop()
 
 	var fwMgr *firewall.Manager
-	if firewall.Available() {
+	if _, ok := firewall.Available(); ok {
 		fwMgr = firewall.New(cfg.WireGuard.Interface)
 		defer fwMgr.Flush()
 		slog.Info("firewall enabled", "interface", cfg.WireGuard.Interface)
