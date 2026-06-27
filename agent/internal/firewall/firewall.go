@@ -32,37 +32,21 @@ func Available() (string, bool) {
 	return "", false
 }
 
-// New returns a Manager for the given WireGuard interface.
-// prefer selects the backend explicitly ("ufw" or "nft"); empty = auto-detect (ufw → nft).
-func New(iface, prefer string) *Manager {
-	name := prefer
-	if name == "" {
-		var ok bool
-		name, ok = Available()
-		if !ok {
-			slog.Warn("no firewall backend available — firewall disabled")
-			return &Manager{}
-		}
-	} else {
-		if _, err := exec.LookPath(name); err != nil {
-			slog.Warn("configured firewall backend not found", "backend", name)
-			return &Manager{}
-		}
+// New returns a Manager using the first available backend (ufw → nft).
+// iface is the WireGuard interface name, used by the nft backend.
+func New(iface string) *Manager {
+	name, ok := Available()
+	if !ok {
+		return &Manager{}
 	}
 	var b backend
 	switch name {
-	case "none", "disabled", "off":
-		slog.Info("firewall disabled by configuration")
-		return &Manager{}
 	case "ufw":
-		b = &ufwBackend{iface: iface}
+		b = &ufwBackend{}
 	case "nft":
 		b = &nftBackend{iface: iface}
-	default:
-		slog.Warn("unknown firewall backend", "backend", name)
-		return &Manager{}
 	}
-	slog.Info("firewall backend selected", "backend", name, "interface", iface)
+	slog.Info("firewall backend selected", "backend", name)
 	return &Manager{b: b}
 }
 
