@@ -9,6 +9,7 @@ import (
 )
 
 type ufwBackend struct {
+	iface string
 	mu    sync.Mutex
 	rules []string // rule specs added by us, tracked for cleanup
 }
@@ -33,12 +34,12 @@ func (u *ufwBackend) apply(serviceRules, extraRules []Rule, proxyPort int) error
 				continue
 			}
 			seen[ip] = true
-			next = append(next, fmt.Sprintf("from %s to any port %d proto tcp", ip, proxyPort))
+			next = append(next, fmt.Sprintf("in on %s from %s to any port %d proto tcp", u.iface, ip, proxyPort))
 		}
 	}
 
 	for _, r := range extraRules {
-		if spec := ufwSpec(r); spec != "" {
+		if spec := ufwSpec(u.iface, r); spec != "" {
 			next = append(next, spec)
 		}
 	}
@@ -65,8 +66,8 @@ func (u *ufwBackend) flush() {
 	u.rules = nil
 }
 
-func ufwSpec(r Rule) string {
-	var parts []string
+func ufwSpec(iface string, r Rule) string {
+	parts := []string{"in", "on", iface}
 	if len(r.SrcIPs) > 0 {
 		parts = append(parts, "from", r.SrcIPs[0])
 	}
