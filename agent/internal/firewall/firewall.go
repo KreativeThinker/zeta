@@ -51,6 +51,9 @@ func New(iface, prefer string) *Manager {
 	}
 	var b backend
 	switch name {
+	case "none", "disabled", "off":
+		slog.Info("firewall disabled by configuration")
+		return &Manager{}
 	case "ufw":
 		b = &ufwBackend{iface: iface}
 	case "nft":
