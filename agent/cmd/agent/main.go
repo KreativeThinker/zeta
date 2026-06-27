@@ -5,19 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
-
-	"net/http"
-	"strings"
 
 	"github.com/kreativethinker/zeta/agent/internal/agentapi"
 	"github.com/kreativethinker/zeta/agent/internal/config"
 	"github.com/kreativethinker/zeta/agent/internal/control"
 	"github.com/kreativethinker/zeta/agent/internal/dns"
-	"github.com/kreativethinker/zeta/agent/internal/nat"
+	"github.com/kreativethinker/zeta/agent/internal/firewall"
 	"github.com/kreativethinker/zeta/agent/internal/proxy"
 	"github.com/kreativethinker/zeta/agent/internal/route"
 	"github.com/kreativethinker/zeta/agent/internal/state"
@@ -32,8 +29,7 @@ func main() {
 	coordAddr := flag.String("coordinator", "", "override coordinator address")
 	flag.Parse()
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
@@ -120,9 +116,6 @@ func main() {
 	defer resolver.Stop()
 
 	proxyMgr := proxy.New()
-	// Always trust the local mesh IP as a proxy source so that a reverse proxy
-	// like Caddy running on the same host (connecting via the mesh IP) has its
-	// X-Forwarded-For header honoured to identify the real mesh client.
 	trustedProxies := append(cfg.Proxy.TrustedProxies, st.MeshIP)
 	proxyMgr.SetTrustedProxies(trustedProxies)
 	if err := proxyMgr.Start(cfg.Proxy.Addr); err != nil {
@@ -131,14 +124,19 @@ func main() {
 	}
 	defer proxyMgr.Stop()
 
-	var sendChRef chan<- *zetapb.SyncUpdate
-	onZetafileChange := func(updated *config.Zetafile) {
-		zf = updated
-		if sendChRef != nil {
-			announceServices(sendChRef, updated)
-		}
+	var fwMgr *firewall.Manager
+	if firewall.Available() {
+		fwMgr = firewall.New(cfg.WireGuard.Interface)
+		defer fwMgr.Flush()
+		slog.Info("firewall enabled", "interface", cfg.WireGuard.Interface)
+	} else {
+		slog.Warn("nft not found — firewall disabled")
 	}
-	agentHandler := agentapi.New(st, resolvedZetafilePath, proxyMgr, onZetafileChange)
+
+	a := NewAgent(cfg, st, wgMgr, resolver, proxyMgr, fwMgr)
+	a.SetZetafile(zf)
+
+	agentHandler := agentapi.New(st, resolvedZetafilePath, proxyMgr, a.UpdateZetafile)
 	go func() {
 		slog.Info("agent UI listening", "addr", cfg.HTTP.Addr)
 		if err := http.ListenAndServe(cfg.HTTP.Addr, agentHandler); err != nil {
@@ -149,7 +147,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if err := config.WatchZetafile(ctx, resolvedZetafilePath, onZetafileChange); err != nil {
+	if err := config.WatchZetafile(ctx, resolvedZetafilePath, a.UpdateZetafile); err != nil {
 		slog.Warn("zetafile hot-reload unavailable", "err", err)
 	} else {
 		slog.Info("watching zetafile for changes", "path", resolvedZetafilePath)
@@ -157,7 +155,7 @@ func main() {
 
 	slog.Info("zeta agent up", "interface", cfg.WireGuard.Interface, "mesh_ip", st.MeshIP)
 
-	runSyncLoop(ctx, client, st, wgMgr, resolver, proxyMgr, zf, cfg, &sendChRef)
+	a.Run(ctx, client)
 
 	if err := wgMgr.ApplyPeers(nil); err != nil {
 		slog.Warn("clearing WireGuard peers on exit", "err", err)
@@ -195,225 +193,4 @@ func enroll(client *control.Client, preauthKey string) (*state.State, error) {
 		CertKeyPEM:   string(cfg.KeyPem),
 		CAPEM:        string(cfg.CaPem),
 	}, nil
-}
-
-func runSyncLoop(
-	ctx context.Context,
-	client *control.Client,
-	st *state.State,
-	wgMgr *wg.Manager,
-	resolver *dns.Resolver,
-	proxyMgr *proxy.Manager,
-	zf *config.Zetafile,
-	cfg *config.Config,
-	sendChPtr *chan<- *zetapb.SyncUpdate,
-) {
-	backoff := time.Second
-	const maxBackoff = 60 * time.Second
-
-	for {
-		sendCh, recvCh, err := client.OpenSync(ctx, st.NodeID)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			slog.Warn("opening sync stream", "err", err, "retry_in", backoff)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(backoff):
-			}
-			backoff = min(backoff*2, maxBackoff)
-			continue
-		}
-		backoff = time.Second
-
-		streamCtx, streamCancel := context.WithCancel(ctx)
-
-		*sendChPtr = sendCh
-
-		if len(zf.Services) > 0 {
-			announceServices(sendCh, zf)
-		}
-
-		stunDone := make(chan struct{})
-		go func() {
-			defer close(stunDone)
-			ticker := time.NewTicker(30 * time.Second)
-			defer ticker.Stop()
-			reportEndpoint(sendCh, cfg)
-			for {
-				select {
-				case <-streamCtx.Done():
-					return
-				case <-ticker.C:
-					reportEndpoint(sendCh, cfg)
-				}
-			}
-		}()
-
-		pingDone := make(chan struct{})
-		go func() {
-			defer close(pingDone)
-			ticker := time.NewTicker(30 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-streamCtx.Done():
-					return
-				case <-ticker.C:
-					select {
-					case sendCh <- &zetapb.SyncUpdate{Payload: &zetapb.SyncUpdate_Ping{Ping: &zetapb.PingUpdate{}}}:
-					default:
-					}
-				}
-			}
-		}()
-
-		for {
-			select {
-			case <-ctx.Done():
-				*sendChPtr = nil
-				streamCancel()
-				<-stunDone
-				<-pingDone
-				close(sendCh)
-				return
-			case msg, ok := <-recvCh:
-				if !ok {
-					*sendChPtr = nil
-					streamCancel()
-					<-stunDone
-					<-pingDone
-					close(sendCh)
-					goto reconnect
-				}
-				handleSyncResponse(msg, st, wgMgr, resolver, proxyMgr, zf, cfg)
-			}
-		}
-
-	reconnect:
-		if ctx.Err() != nil {
-			return
-		}
-		slog.Warn("sync stream disconnected, reconnecting", "retry_in", backoff)
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, maxBackoff)
-	}
-}
-
-func announceServices(sendCh chan<- *zetapb.SyncUpdate, zf *config.Zetafile) {
-	decls := make([]*zetapb.ServiceDecl, 0, len(zf.Services))
-	for _, s := range zf.Services {
-		decls = append(decls, &zetapb.ServiceDecl{
-			Name:             s.Name,
-			TargetAddr:       s.Target,
-			AllowedHostnames: s.Access,
-		})
-	}
-	select {
-	case sendCh <- &zetapb.SyncUpdate{
-		Payload: &zetapb.SyncUpdate_Services{
-			Services: &zetapb.ServiceAnnounce{Services: decls},
-		},
-	}:
-	default:
-	}
-}
-
-func reportEndpoint(sendCh chan<- *zetapb.SyncUpdate, cfg *config.Config) {
-	endpoint, err := nat.DiscoverEndpoint(nat.DefaultSTUN, cfg.WireGuard.ListenPort)
-	if err != nil {
-		slog.Warn("STUN discovery failed", "err", err)
-		return
-	}
-	select {
-	case sendCh <- &zetapb.SyncUpdate{
-		Payload: &zetapb.SyncUpdate_Endpoint{
-			Endpoint: &zetapb.EndpointUpdate{Endpoint: endpoint},
-		},
-	}:
-	default:
-	}
-}
-
-func handleSyncResponse(
-	msg *zetapb.SyncResponse,
-	st *state.State,
-	wgMgr *wg.Manager,
-	resolver *dns.Resolver,
-	proxyMgr *proxy.Manager,
-	zf *config.Zetafile,
-	cfg *config.Config,
-) {
-	switch p := msg.Payload.(type) {
-	case *zetapb.SyncResponse_NetworkMap:
-		nm := p.NetworkMap
-
-		selfHostname := st.Domain
-		if idx := strings.Index(selfHostname, "."); idx != -1 {
-			selfHostname = selfHostname[:idx]
-		}
-		ipToPK := map[string]string{st.MeshIP: st.WGPublicKey}
-		ipToHost := map[string]string{st.MeshIP: selfHostname}
-		var peers []wg.PeerConfig
-		for _, peer := range nm.Peers {
-			if peer.NodeId == st.NodeID {
-				continue
-			}
-			ipToPK[peer.MeshIp] = peer.WgPublicKey
-			ipToHost[peer.MeshIp] = peer.Hostname
-			peers = append(peers, wg.PeerConfig{
-				PublicKey:  peer.WgPublicKey,
-				AllowedIPs: []string{peer.MeshIp + "/32"},
-				Endpoint:   peer.Endpoint,
-			})
-		}
-
-		if err := wgMgr.ApplyPeers(peers); err != nil {
-			slog.Error("applying WireGuard peers", "err", err)
-		}
-
-		if nm.Dns != nil {
-			resolver.UpdateFromNetworkMap(nm.Peers, nm.Dns.MeshDomain)
-		}
-
-		if len(zf.Services) > 0 {
-			svcPKs := make(map[string][]string)
-			for _, peer := range nm.Peers {
-				if peer.NodeId == st.NodeID {
-					for _, svc := range peer.Services {
-						svcPKs[svc.Name] = svc.AllowedPubkeys
-					}
-				}
-			}
-			var proxySvcs []proxy.ServiceConfig
-			for _, s := range zf.Services {
-				proxySvcs = append(proxySvcs, proxy.ServiceConfig{
-					Name:       s.Name,
-					TargetAddr: s.Target,
-					AllowedPKs: svcPKs[s.Name],
-				})
-			}
-			proxyMgr.Sync(proxySvcs, ipToPK, ipToHost)
-		}
-
-		slog.Info("network map updated", "peers", len(peers))
-
-	case *zetapb.SyncResponse_Relay:
-		slog.Debug("relay offer received (Phase 3 stub)")
-	case *zetapb.SyncResponse_IceSignal:
-		slog.Debug("ICE signal received (Phase 3 stub)")
-	}
-}
-
-func min(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -37,13 +37,24 @@ func SaveZetafile(path string, zf *Zetafile) error {
 }
 
 type Zetafile struct {
-	Services []ZetaService `yaml:"services"`
+	Services []ZetaService  `yaml:"services"`
+	Firewall FirewallConfig `yaml:"firewall"`
 }
 
 type ZetaService struct {
 	Name   string   `yaml:"name"   json:"name"`
 	Target string   `yaml:"target" json:"target"`
 	Access []string `yaml:"access" json:"access"`
+}
+
+type FirewallConfig struct {
+	Rules []FirewallRule `yaml:"rules"`
+}
+
+type FirewallRule struct {
+	Proto string `yaml:"proto"` // tcp, udp, icmp, any
+	Port  int    `yaml:"port"`  // 0 = any port
+	From  string `yaml:"from"`  // CIDR or "any"; empty = any
 }
 
 func LoadZetafile(path string) (*Zetafile, error) {
