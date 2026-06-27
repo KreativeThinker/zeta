@@ -48,7 +48,8 @@ type ZetaService struct {
 }
 
 type FirewallConfig struct {
-	Rules []FirewallRule `yaml:"rules"`
+	Backend string        `yaml:"backend"` // "ufw" or "nft"; empty = auto-detect
+	Rules   []FirewallRule `yaml:"rules"`
 }
 
 type FirewallRule struct {

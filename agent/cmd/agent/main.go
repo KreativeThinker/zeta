@@ -124,14 +124,8 @@ func main() {
 	}
 	defer proxyMgr.Stop()
 
-	var fwMgr *firewall.Manager
-	if _, ok := firewall.Available(); ok {
-		fwMgr = firewall.New(cfg.WireGuard.Interface)
-		defer fwMgr.Flush()
-		slog.Info("firewall enabled", "interface", cfg.WireGuard.Interface)
-	} else {
-		slog.Warn("nft not found — firewall disabled")
-	}
+	fwMgr := firewall.New(cfg.WireGuard.Interface, zf.Firewall.Backend)
+	defer fwMgr.Flush()
 
 	a := NewAgent(cfg, st, wgMgr, resolver, proxyMgr, fwMgr)
 	a.SetZetafile(zf)
