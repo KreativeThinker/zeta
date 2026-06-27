@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/tls"
 	"log/slog"
 	"net"
 	"net/http"
@@ -88,6 +89,26 @@ func (m *Manager) Start(addr string) error {
 	}
 	m.server = &http.Server{Handler: m}
 	slog.Info("proxy listening", "addr", addr)
+	go m.server.Serve(ln) //nolint:errcheck
+	return nil
+}
+
+// StartTLS begins listening on addr with TLS using the provided PEM-encoded
+// certificate and key. Use this instead of Start to serve HTTPS within the mesh.
+func (m *Manager) StartTLS(addr, certPEM, keyPEM string) error {
+	cert, err := tls.X509KeyPair([]byte(certPEM), []byte(keyPEM))
+	if err != nil {
+		return err
+	}
+	ln, err := tls.Listen("tcp", addr, &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS13,
+	})
+	if err != nil {
+		return err
+	}
+	m.server = &http.Server{Handler: m}
+	slog.Info("proxy listening (TLS)", "addr", addr)
 	go m.server.Serve(ln) //nolint:errcheck
 	return nil
 }

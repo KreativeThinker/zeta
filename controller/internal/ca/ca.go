@@ -83,7 +83,10 @@ func (c *CA) signCert(nodeID, meshIP, hostname, meshDomain string, pubKey crypto
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		IPAddresses:  []net.IP{ip},
-		DNSNames:     []string{fmt.Sprintf("%s.%s", hostname, meshDomain)},
+		DNSNames: []string{
+			fmt.Sprintf("%s.%s", hostname, meshDomain),
+			fmt.Sprintf("*.%s.%s", hostname, meshDomain),
+		},
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, c.cert, pubKey, c.key)
