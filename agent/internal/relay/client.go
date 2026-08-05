@@ -22,6 +22,16 @@ import (
 // stream is re-established; existing per-peer loopback sockets and their
 // WireGuard-assigned endpoints stay valid across that swap.
 type Client struct {
+	// wgAddr is this agent's own WireGuard interface's single listening
+	// socket (127.0.0.1:<listen port>). WireGuard multiplexes all peers over
+	// that one socket, so relayed inbound packets are always delivered there
+	// — regardless of whether this agent has itself decided to relay the
+	// sending peer, and regardless of any traffic having gone out yet. That
+	// matters: the peer on the other end may have switched to relay while
+	// this agent is still trying direct, and the first packet through must
+	// still get delivered for a handshake to ever complete.
+	wgAddr *net.UDPAddr
+
 	sendMu sync.RWMutex
 	send   chan<- *zetapb.RelayFrame
 
@@ -31,15 +41,16 @@ type Client struct {
 
 type peerRelay struct {
 	conn *net.UDPConn
-
-	mu         sync.Mutex
-	remoteAddr *net.UDPAddr // last-seen WireGuard source addr on the loopback socket
 }
 
-// New creates a relay Client with no active stream. Call SetSend once a
-// Relay stream is open before relaying will do anything.
-func New() *Client {
-	return &Client{peers: make(map[string]*peerRelay)}
+// New creates a relay Client for an agent whose WireGuard interface listens
+// on wgListenPort. Call SetSend once a Relay stream is open before relaying
+// will do anything.
+func New(wgListenPort int) *Client {
+	return &Client{
+		wgAddr: &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: wgListenPort},
+		peers:  make(map[string]*peerRelay),
+	}
 }
 
 // SetSend points outbound frames at a newly (re)established stream's send
@@ -50,24 +61,17 @@ func (c *Client) SetSend(send chan<- *zetapb.RelayFrame) {
 	c.sendMu.Unlock()
 }
 
-// Run consumes inbound RelayFrames until recv is closed, dispatching each to
-// the local loopback socket for its FromNodeId. Blocking; call in a goroutine
-// per stream connection.
+// Run consumes inbound RelayFrames until recv is closed, delivering each
+// straight to WireGuard's listening socket. Blocking; call in a goroutine per
+// stream connection.
 func (c *Client) Run(recv <-chan *zetapb.RelayFrame) {
 	for frame := range recv {
-		c.mu.Lock()
-		pr, ok := c.peers[frame.FromNodeId]
-		c.mu.Unlock()
-		if !ok {
+		pr, err := c.getOrCreate(frame.FromNodeId)
+		if err != nil {
+			slog.Warn("relay: provisioning inbound socket", "peer", frame.FromNodeId, "err", err)
 			continue
 		}
-		pr.mu.Lock()
-		addr := pr.remoteAddr
-		pr.mu.Unlock()
-		if addr == nil {
-			continue // WireGuard hasn't sent anything on this socket yet
-		}
-		if _, err := pr.conn.WriteToUDP(frame.Payload, addr); err != nil {
+		if _, err := pr.conn.WriteToUDP(frame.Payload, c.wgAddr); err != nil {
 			slog.Debug("relay: writing to local wg socket", "peer", frame.FromNodeId, "err", err)
 		}
 	}
@@ -76,13 +80,22 @@ func (c *Client) Run(recv <-chan *zetapb.RelayFrame) {
 // RelayAddrFor returns the local loopback address WireGuard's peer Endpoint
 // should be pointed at to relay traffic to peerNodeID via the controller.
 // The underlying socket and forwarding goroutine are created lazily on first
-// use and reused afterward, including across stream reconnects.
+// use (from here or from an inbound frame in Run) and reused afterward,
+// including across stream reconnects.
 func (c *Client) RelayAddrFor(peerNodeID string) (*net.UDPAddr, error) {
+	pr, err := c.getOrCreate(peerNodeID)
+	if err != nil {
+		return nil, err
+	}
+	return pr.conn.LocalAddr().(*net.UDPAddr), nil
+}
+
+func (c *Client) getOrCreate(peerNodeID string) (*peerRelay, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if pr, ok := c.peers[peerNodeID]; ok {
-		return pr.conn.LocalAddr().(*net.UDPAddr), nil
+		return pr, nil
 	}
 
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
@@ -95,7 +108,7 @@ func (c *Client) RelayAddrFor(peerNodeID string) (*net.UDPAddr, error) {
 
 	go c.forward(peerNodeID, pr)
 
-	return conn.LocalAddr().(*net.UDPAddr), nil
+	return pr, nil
 }
 
 // forward reads WireGuard's outbound datagrams off the local loopback socket
@@ -103,13 +116,10 @@ func (c *Client) RelayAddrFor(peerNodeID string) (*net.UDPAddr, error) {
 func (c *Client) forward(peerNodeID string, pr *peerRelay) {
 	buf := make([]byte, 65535)
 	for {
-		n, addr, err := pr.conn.ReadFromUDP(buf)
+		n, _, err := pr.conn.ReadFromUDP(buf)
 		if err != nil {
 			return // socket closed
 		}
-		pr.mu.Lock()
-		pr.remoteAddr = addr
-		pr.mu.Unlock()
 
 		payload := make([]byte, n)
 		copy(payload, buf[:n])

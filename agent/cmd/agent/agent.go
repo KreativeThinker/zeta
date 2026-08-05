@@ -65,7 +65,7 @@ func NewAgent(cfg *config.Config, st *state.State, wgMgr *wg.Manager, resolver *
 		proxyMgr:    proxyMgr,
 		fwMgr:       fwMgr,
 		proxyPort:   proxyPort,
-		relayClient: relay.New(),
+		relayClient: relay.New(cfg.WireGuard.ListenPort),
 		pathMgr:     pathsel.New(pathHandshakeTimeout, pathRetryInterval),
 	}
 }
