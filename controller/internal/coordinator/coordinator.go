@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kreativethinker/zeta/proto/zetapb"
 	"github.com/kreativethinker/zeta/controller/internal/ca"
 	"github.com/kreativethinker/zeta/controller/internal/config"
 	"github.com/kreativethinker/zeta/controller/internal/db"
+	"github.com/kreativethinker/zeta/proto/zetapb"
 )
 
 // Coordinator is the central state manager. It owns the live peer registry and
@@ -23,18 +23,20 @@ type Coordinator struct {
 	ca  *ca.CA
 	cfg *config.Config
 
-	mu      sync.RWMutex
-	streams map[string]chan *zetapb.SyncResponse // nodeID → buffered send channel
-	online  map[string]bool
+	mu           sync.RWMutex
+	streams      map[string]chan *zetapb.SyncResponse // nodeID → buffered send channel
+	online       map[string]bool
+	relayStreams map[string]chan *zetapb.RelayFrame // nodeID → buffered relay send channel
 }
 
 func New(database *db.DB, authority *ca.CA, cfg *config.Config) *Coordinator {
 	return &Coordinator{
-		db:      database,
-		ca:      authority,
-		cfg:     cfg,
-		streams: make(map[string]chan *zetapb.SyncResponse),
-		online:  make(map[string]bool),
+		db:           database,
+		ca:           authority,
+		cfg:          cfg,
+		streams:      make(map[string]chan *zetapb.SyncResponse),
+		online:       make(map[string]bool),
+		relayStreams: make(map[string]chan *zetapb.RelayFrame),
 	}
 }
 
@@ -156,8 +158,8 @@ func (c *Coordinator) BuildNetworkMap() (*zetapb.NetworkMap, error) {
 		pbSvcs := make([]*zetapb.Service, 0, len(svcs))
 		for _, s := range svcs {
 			pbSvcs = append(pbSvcs, &zetapb.Service{
-				Name:          s.Name,
-				Port:          uint32(s.Port),
+				Name:           s.Name,
+				Port:           uint32(s.Port),
 				AllowedPubkeys: s.AllowedPKs,
 			})
 		}
@@ -303,6 +305,37 @@ func (c *Coordinator) HandleSyncUpdate(nodeID string, upd *zetapb.SyncUpdate) er
 		}
 	}
 	return nil
+}
+
+// RegisterRelayStream adds a node's relay send channel.
+func (c *Coordinator) RegisterRelayStream(nodeID string, ch chan *zetapb.RelayFrame) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.relayStreams[nodeID] = ch
+}
+
+// UnregisterRelayStream removes a node's relay send channel.
+func (c *Coordinator) UnregisterRelayStream(nodeID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.relayStreams, nodeID)
+}
+
+// HandleRelayFrame forwards an opaque WireGuard packet from one node to
+// another's relay stream, by node ID. The payload is never inspected.
+func (c *Coordinator) HandleRelayFrame(fromNodeID string, frame *zetapb.RelayFrame) {
+	c.mu.RLock()
+	ch, ok := c.relayStreams[frame.ToNodeId]
+	c.mu.RUnlock()
+	if !ok {
+		return
+	}
+	msg := &zetapb.RelayFrame{FromNodeId: fromNodeID, Payload: frame.Payload}
+	select {
+	case ch <- msg:
+	default:
+		slog.Debug("dropping relay frame (channel full)", "to_node_id", frame.ToNodeId)
+	}
 }
 
 // IsOnline reports whether a node currently has an active Sync stream.

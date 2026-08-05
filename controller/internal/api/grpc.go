@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net"
 
-	"github.com/kreativethinker/zeta/proto/zetapb"
 	"github.com/kreativethinker/zeta/controller/internal/coordinator"
+	"github.com/kreativethinker/zeta/proto/zetapb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -19,9 +19,9 @@ import (
 // GRPCServer wraps grpc.Server and implements CoordinatorServiceServer.
 type GRPCServer struct {
 	zetapb.UnimplementedCoordinatorServiceServer
-	coord   *coordinator.Coordinator
-	caPEM   []byte
-	srv     *grpc.Server
+	coord *coordinator.Coordinator
+	caPEM []byte
+	srv   *grpc.Server
 }
 
 // NewGRPCServer creates a gRPC server. If certPEM/keyPEM are non-nil the server
@@ -122,6 +122,46 @@ func (s *GRPCServer) Sync(stream zetapb.CoordinatorService_SyncServer) error {
 		if err := s.coord.HandleSyncUpdate(nodeID, upd); err != nil {
 			slog.Warn("handling sync update", "node_id", nodeID, "err", err)
 		}
+	}
+
+	close(ch)
+	<-sendDone
+	return nil
+}
+
+func (s *GRPCServer) Relay(stream zetapb.CoordinatorService_RelayServer) error {
+	nodeID, err := nodeIDFromMetadata(stream.Context())
+	if err != nil {
+		return status.Error(codes.Unauthenticated, err.Error())
+	}
+
+	ch := make(chan *zetapb.RelayFrame, 8)
+	s.coord.RegisterRelayStream(nodeID, ch)
+	defer s.coord.UnregisterRelayStream(nodeID)
+
+	// Sender goroutine: drain the channel and write to the stream.
+	sendDone := make(chan struct{})
+	go func() {
+		defer close(sendDone)
+		for msg := range ch {
+			if err := stream.Send(msg); err != nil {
+				slog.Debug("relay send error", "node_id", nodeID, "err", err)
+				return
+			}
+		}
+	}()
+
+	// Receiver loop: forward inbound frames to their destination node.
+	for {
+		frame, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			slog.Debug("relay recv error", "node_id", nodeID, "err", err)
+			break
+		}
+		s.coord.HandleRelayFrame(nodeID, frame)
 	}
 
 	close(ch)

@@ -93,6 +93,51 @@ func (c *Client) OpenSync(ctx context.Context, nodeID string) (
 	return sendCh, recvCh, nil
 }
 
+// OpenRelay opens the bidirectional Relay stream, used to fall back to
+// controller-mediated relaying of WireGuard packets when direct connectivity
+// isn't working. Returns send/recv channels; both are closed when the stream
+// ends.
+func (c *Client) OpenRelay(ctx context.Context, nodeID string) (
+	send chan<- *zetapb.RelayFrame,
+	recv <-chan *zetapb.RelayFrame,
+	err error,
+) {
+	md := metadata.Pairs("node-id", nodeID)
+	streamCtx := metadata.NewOutgoingContext(ctx, md)
+
+	stream, err := c.stub.Relay(streamCtx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("opening relay stream: %w", err)
+	}
+
+	sendCh := make(chan *zetapb.RelayFrame, 8)
+	recvCh := make(chan *zetapb.RelayFrame, 8)
+
+	// Sender: drain sendCh → stream.Send
+	go func() {
+		for msg := range sendCh {
+			if err := stream.Send(msg); err != nil {
+				return
+			}
+		}
+		_ = stream.CloseSend()
+	}()
+
+	// Receiver: stream.Recv → recvCh
+	go func() {
+		defer close(recvCh)
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				return
+			}
+			recvCh <- msg
+		}
+	}()
+
+	return sendCh, recvCh, nil
+}
+
 func (c *Client) Close() error {
 	return c.conn.Close()
 }
