@@ -15,10 +15,21 @@ import (
 	"github.com/kreativethinker/zeta/agent/internal/dns"
 	"github.com/kreativethinker/zeta/agent/internal/firewall"
 	"github.com/kreativethinker/zeta/agent/internal/nat"
+	"github.com/kreativethinker/zeta/agent/internal/pathsel"
 	"github.com/kreativethinker/zeta/agent/internal/proxy"
+	"github.com/kreativethinker/zeta/agent/internal/relay"
 	"github.com/kreativethinker/zeta/agent/internal/state"
 	"github.com/kreativethinker/zeta/agent/internal/wg"
 	"github.com/kreativethinker/zeta/proto/zetapb"
+)
+
+const (
+	// pathHandshakeTimeout is how long a freshly-applied direct endpoint gets
+	// before pathsel falls back to relaying that peer through the controller.
+	pathHandshakeTimeout = 20 * time.Second
+	// pathRetryInterval is how long a peer stays on relay before pathsel
+	// tries the direct endpoint again.
+	pathRetryInterval = 2 * time.Minute
 )
 
 type Agent struct {
@@ -33,6 +44,12 @@ type Agent struct {
 	hostToIP  atomic.Pointer[map[string]string]
 	proxyPort int
 
+	relayClient *relay.Client
+	pathMgr     *pathsel.Manager
+
+	peersMu   sync.Mutex
+	lastPeers []wg.PeerConfig // guarded by peersMu; direct (pre-override) peer configs from the last NetworkMap
+
 	mu   sync.Mutex
 	send chan<- *zetapb.SyncUpdate // guarded by mu; nil when disconnected
 }
@@ -41,13 +58,15 @@ func NewAgent(cfg *config.Config, st *state.State, wgMgr *wg.Manager, resolver *
 	_, portStr, _ := net.SplitHostPort(cfg.Proxy.Addr)
 	proxyPort, _ := strconv.Atoi(portStr)
 	return &Agent{
-		cfg:       cfg,
-		st:        st,
-		wgMgr:     wgMgr,
-		resolver:  resolver,
-		proxyMgr:  proxyMgr,
-		fwMgr:     fwMgr,
-		proxyPort: proxyPort,
+		cfg:         cfg,
+		st:          st,
+		wgMgr:       wgMgr,
+		resolver:    resolver,
+		proxyMgr:    proxyMgr,
+		fwMgr:       fwMgr,
+		proxyPort:   proxyPort,
+		relayClient: relay.New(cfg.WireGuard.ListenPort),
+		pathMgr:     pathsel.New(pathHandshakeTimeout, pathRetryInterval),
 	}
 }
 
@@ -153,6 +172,30 @@ func (a *Agent) applyFirewall() {
 	}
 }
 
+// applyPeers stores the direct (pre-relay-override) peer configs from the
+// latest NetworkMap and applies them, with any active relay overrides, to
+// WireGuard.
+func (a *Agent) applyPeers(basePeers []wg.PeerConfig) {
+	a.peersMu.Lock()
+	a.lastPeers = basePeers
+	a.peersMu.Unlock()
+	a.reapplyPeers()
+}
+
+// reapplyPeers reapplies the last-known peer set with pathsel's current
+// direct/relay overrides. Called after a NetworkMap update and whenever
+// pathsel flips a peer's mode.
+func (a *Agent) reapplyPeers() {
+	a.peersMu.Lock()
+	basePeers := a.lastPeers
+	a.peersMu.Unlock()
+
+	peers := a.pathMgr.ApplyOverrides(basePeers, a.relayClient)
+	if err := a.wgMgr.ApplyPeers(peers); err != nil {
+		slog.Error("applying WireGuard peers", "err", err)
+	}
+}
+
 func (a *Agent) handleSyncResponse(msg *zetapb.SyncResponse) {
 	switch p := msg.Payload.(type) {
 	case *zetapb.SyncResponse_NetworkMap:
@@ -168,6 +211,7 @@ func (a *Agent) handleSyncResponse(msg *zetapb.SyncResponse) {
 		hostToIP := map[string]string{selfHostname: a.st.MeshIP}
 
 		var peers []wg.PeerConfig
+		var pathPeers []pathsel.Peer
 		for _, peer := range nm.Peers {
 			if peer.NodeId == a.st.NodeID {
 				continue
@@ -180,11 +224,15 @@ func (a *Agent) handleSyncResponse(msg *zetapb.SyncResponse) {
 				AllowedIPs: []string{peer.MeshIp + "/32"},
 				Endpoint:   peer.Endpoint,
 			})
+			pathPeers = append(pathPeers, pathsel.Peer{
+				NodeID:   peer.NodeId,
+				PubKey:   peer.WgPublicKey,
+				Endpoint: peer.Endpoint,
+			})
 		}
 
-		if err := a.wgMgr.ApplyPeers(peers); err != nil {
-			slog.Error("applying WireGuard peers", "err", err)
-		}
+		a.pathMgr.UpdatePeers(pathPeers)
+		a.applyPeers(peers)
 		if nm.Dns != nil {
 			a.resolver.UpdateFromNetworkMap(nm.Peers, nm.Dns.MeshDomain)
 		}
@@ -246,6 +294,23 @@ func (a *Agent) Run(ctx context.Context, client *control.Client) {
 		streamCtx, streamCancel := context.WithCancel(ctx)
 		a.setSend(sendCh)
 
+		relaySendCh, relayRecvCh, relayErr := client.OpenRelay(ctx, a.st.NodeID)
+		if relayErr != nil {
+			slog.Warn("opening relay stream", "err", relayErr)
+		} else {
+			a.relayClient.SetSend(relaySendCh)
+		}
+
+		relayDone := make(chan struct{})
+		if relayRecvCh != nil {
+			go func() {
+				defer close(relayDone)
+				a.relayClient.Run(relayRecvCh)
+			}()
+		} else {
+			close(relayDone)
+		}
+
 		if zf := a.zf.Load(); zf != nil && len(zf.Services) > 0 {
 			a.announceServices(sendCh)
 		}
@@ -284,22 +349,50 @@ func (a *Agent) Run(ctx context.Context, client *control.Client) {
 			}
 		}()
 
+		pathDone := make(chan struct{})
+		go func() {
+			defer close(pathDone)
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-streamCtx.Done():
+					return
+				case <-ticker.C:
+					handshakes, err := a.wgMgr.PeerHandshakes()
+					if err != nil {
+						slog.Warn("reading peer handshakes", "err", err)
+						continue
+					}
+					if a.pathMgr.Tick(handshakes, a.relayClient) {
+						a.reapplyPeers()
+					}
+				}
+			}
+		}()
+
+		teardown := func() {
+			a.setSend(nil)
+			a.relayClient.SetSend(nil)
+			streamCancel()
+			<-stunDone
+			<-pingDone
+			<-pathDone
+			close(sendCh)
+			if relaySendCh != nil {
+				close(relaySendCh)
+			}
+			<-relayDone
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
-				a.setSend(nil)
-				streamCancel()
-				<-stunDone
-				<-pingDone
-				close(sendCh)
+				teardown()
 				return
 			case msg, ok := <-recvCh:
 				if !ok {
-					a.setSend(nil)
-					streamCancel()
-					<-stunDone
-					<-pingDone
-					close(sendCh)
+					teardown()
 					goto reconnect
 				}
 				a.handleSyncResponse(msg)

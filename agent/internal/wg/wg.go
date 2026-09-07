@@ -110,6 +110,20 @@ func (m *Manager) ApplyPeers(peers []PeerConfig) error {
 	})
 }
 
+// PeerHandshakes returns each configured peer's last WireGuard handshake
+// time, keyed by base64 public key. A zero time.Time means no handshake yet.
+func (m *Manager) PeerHandshakes() (map[string]time.Time, error) {
+	dev, err := m.client.Device(m.iface)
+	if err != nil {
+		return nil, fmt.Errorf("reading device %s: %w", m.iface, err)
+	}
+	out := make(map[string]time.Time, len(dev.Peers))
+	for _, p := range dev.Peers {
+		out[p.PublicKey.String()] = p.LastHandshakeTime
+	}
+	return out, nil
+}
+
 func (m *Manager) AssignAddress(meshIP, cidr string) error {
 	link, err := netlink.LinkByName(m.iface)
 	if err != nil {

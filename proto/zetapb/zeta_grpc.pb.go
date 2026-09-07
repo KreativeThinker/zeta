@@ -22,6 +22,7 @@ const (
 	CoordinatorService_GetServerKey_FullMethodName = "/zeta.v1.CoordinatorService/GetServerKey"
 	CoordinatorService_Register_FullMethodName     = "/zeta.v1.CoordinatorService/Register"
 	CoordinatorService_Sync_FullMethodName         = "/zeta.v1.CoordinatorService/Sync"
+	CoordinatorService_Relay_FullMethodName        = "/zeta.v1.CoordinatorService/Relay"
 )
 
 // CoordinatorServiceClient is the client API for CoordinatorService service.
@@ -33,6 +34,7 @@ type CoordinatorServiceClient interface {
 	GetServerKey(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ServerKeyResponse, error)
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	Sync(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SyncUpdate, SyncResponse], error)
+	Relay(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[RelayFrame, RelayFrame], error)
 }
 
 type coordinatorServiceClient struct {
@@ -76,6 +78,19 @@ func (c *coordinatorServiceClient) Sync(ctx context.Context, opts ...grpc.CallOp
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type CoordinatorService_SyncClient = grpc.BidiStreamingClient[SyncUpdate, SyncResponse]
 
+func (c *coordinatorServiceClient) Relay(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[RelayFrame, RelayFrame], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &CoordinatorService_ServiceDesc.Streams[1], CoordinatorService_Relay_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[RelayFrame, RelayFrame]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type CoordinatorService_RelayClient = grpc.BidiStreamingClient[RelayFrame, RelayFrame]
+
 // CoordinatorServiceServer is the server API for CoordinatorService service.
 // All implementations must embed UnimplementedCoordinatorServiceServer
 // for forward compatibility.
@@ -85,6 +100,7 @@ type CoordinatorServiceServer interface {
 	GetServerKey(context.Context, *Empty) (*ServerKeyResponse, error)
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	Sync(grpc.BidiStreamingServer[SyncUpdate, SyncResponse]) error
+	Relay(grpc.BidiStreamingServer[RelayFrame, RelayFrame]) error
 	mustEmbedUnimplementedCoordinatorServiceServer()
 }
 
@@ -103,6 +119,9 @@ func (UnimplementedCoordinatorServiceServer) Register(context.Context, *Register
 }
 func (UnimplementedCoordinatorServiceServer) Sync(grpc.BidiStreamingServer[SyncUpdate, SyncResponse]) error {
 	return status.Error(codes.Unimplemented, "method Sync not implemented")
+}
+func (UnimplementedCoordinatorServiceServer) Relay(grpc.BidiStreamingServer[RelayFrame, RelayFrame]) error {
+	return status.Error(codes.Unimplemented, "method Relay not implemented")
 }
 func (UnimplementedCoordinatorServiceServer) mustEmbedUnimplementedCoordinatorServiceServer() {}
 func (UnimplementedCoordinatorServiceServer) testEmbeddedByValue()                            {}
@@ -168,6 +187,13 @@ func _CoordinatorService_Sync_Handler(srv interface{}, stream grpc.ServerStream)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type CoordinatorService_SyncServer = grpc.BidiStreamingServer[SyncUpdate, SyncResponse]
 
+func _CoordinatorService_Relay_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(CoordinatorServiceServer).Relay(&grpc.GenericServerStream[RelayFrame, RelayFrame]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type CoordinatorService_RelayServer = grpc.BidiStreamingServer[RelayFrame, RelayFrame]
+
 // CoordinatorService_ServiceDesc is the grpc.ServiceDesc for CoordinatorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -188,6 +214,12 @@ var CoordinatorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Sync",
 			Handler:       _CoordinatorService_Sync_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "Relay",
+			Handler:       _CoordinatorService_Relay_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

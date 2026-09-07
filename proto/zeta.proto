@@ -11,6 +11,7 @@ service CoordinatorService {
   rpc GetServerKey(Empty) returns (ServerKeyResponse);
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc Sync(stream SyncUpdate) returns (stream SyncResponse);
+  rpc Relay(stream RelayFrame) returns (stream RelayFrame);
 }
 
 // Auth and Enrollment
@@ -131,6 +132,16 @@ message RelayServer {
 message RelayOffer {
   string from_node_id = 1;
   string to_node_id = 2;
+}
+
+// RelayFrame carries an opaque WireGuard UDP packet between two peers via the
+// controller, used as a fallback when direct UDP connectivity isn't working.
+// The controller never inspects or decrypts the payload — it just forwards it
+// by node ID.
+message RelayFrame {
+  string to_node_id = 1; // set by sender; ignored server -> client
+  string from_node_id = 2; // set by server on delivery; ignored client -> server
+  bytes payload = 3;
 }
 
 message ICESignal {
