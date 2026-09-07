@@ -18,29 +18,16 @@
 package dockerdiscovery
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/kreativethinker/zeta/agent/internal/config"
 )
 
-const (
-	labelName   = "zeta.service.name"
-	labelPort   = "zeta.service.port"
-	labelAccess = "zeta.service.access"
-
-	socketPath = "/var/run/docker.sock"
-	debounce   = 500 * time.Millisecond
-)
+const socketPath = "/var/run/docker.sock"
 
 type Watcher struct {
 	hc *http.Client
@@ -110,40 +97,6 @@ func (w *Watcher) Discover(ctx context.Context) ([]config.ZetaService, error) {
 	return svcs, nil
 }
 
-// parseContainer extracts a ZetaService from a container's zeta.service.*
-// labels. Returns ok=false if the container doesn't declare a mesh service.
-func parseContainer(c containerSummary) (config.ZetaService, bool) {
-	name := c.Labels[labelName]
-	portStr := c.Labels[labelPort]
-	if name == "" || portStr == "" {
-		return config.ZetaService{}, false
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		slog.Warn("dockerdiscovery: invalid port label", "container", shortID(c.ID), "port", portStr)
-		return config.ZetaService{}, false
-	}
-	ip := containerIP(c)
-	if ip == "" {
-		slog.Warn("dockerdiscovery: no network IP for container", "container", shortID(c.ID))
-		return config.ZetaService{}, false
-	}
-
-	access := []string{"*"}
-	if raw := c.Labels[labelAccess]; raw != "" {
-		access = strings.Split(raw, ",")
-		for i := range access {
-			access[i] = strings.TrimSpace(access[i])
-		}
-	}
-
-	return config.ZetaService{
-		Name:   name,
-		Target: net.JoinHostPort(ip, strconv.Itoa(port)),
-		Access: access,
-	}, true
-}
-
 func containerIP(c containerSummary) string {
 	for _, n := range c.NetworkSettings.Networks {
 		if n.IPAddress != "" {
@@ -158,62 +111,4 @@ func shortID(id string) string {
 		return id[:12]
 	}
 	return id
-}
-
-// Watch re-runs Discover on every container start/stop/die event (debounced)
-// and reports the resulting service list to onChange. Blocks until ctx is
-// canceled.
-func (w *Watcher) Watch(ctx context.Context, onChange func([]config.ZetaService)) {
-	for {
-		if err := w.streamEvents(ctx, onChange); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("dockerdiscovery: event stream error, retrying", "err", err)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-			}
-			continue
-		}
-		if ctx.Err() != nil {
-			return
-		}
-	}
-}
-
-func (w *Watcher) streamEvents(ctx context.Context, onChange func([]config.ZetaService)) error {
-	q := "type=container&filters=" + `{"event":["start","stop","die"]}`
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/events?"+q, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := w.hc.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("docker /events: status %d", resp.StatusCode)
-	}
-
-	var timer *time.Timer
-	fire := func() {
-		svcs, err := w.Discover(ctx)
-		if err != nil {
-			slog.Warn("dockerdiscovery: re-discovery failed", "err", err)
-			return
-		}
-		onChange(svcs)
-	}
-
-	sc := bufio.NewScanner(resp.Body)
-	for sc.Scan() {
-		if timer != nil {
-			timer.Stop()
-		}
-		timer = time.AfterFunc(debounce, fire)
-	}
-	if timer != nil {
-		timer.Stop()
-	}
-	return sc.Err()
 }

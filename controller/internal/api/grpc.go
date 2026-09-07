@@ -97,32 +97,17 @@ func (s *GRPCServer) Sync(stream zetapb.CoordinatorService_SyncServer) error {
 	s.coord.RegisterStream(nodeID, ch)
 	defer s.coord.UnregisterStream(nodeID)
 
-	// Sender goroutine: drain the channel and write to the stream.
 	sendDone := make(chan struct{})
 	go func() {
 		defer close(sendDone)
-		for msg := range ch {
-			if err := stream.Send(msg); err != nil {
-				slog.Debug("sync send error", "node_id", nodeID, "err", err)
-				return
-			}
-		}
+		pumpSend(stream.Send, ch, "sync", nodeID)
 	}()
 
-	// Receiver loop: handle inbound SyncUpdates from the agent.
-	for {
-		upd, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			slog.Debug("sync recv error", "node_id", nodeID, "err", err)
-			break
-		}
+	pumpRecv(stream.Recv, "sync", nodeID, func(upd *zetapb.SyncUpdate) {
 		if err := s.coord.HandleSyncUpdate(nodeID, upd); err != nil {
 			slog.Warn("handling sync update", "node_id", nodeID, "err", err)
 		}
-	}
+	})
 
 	close(ch)
 	<-sendDone
@@ -139,30 +124,15 @@ func (s *GRPCServer) Relay(stream zetapb.CoordinatorService_RelayServer) error {
 	s.coord.RegisterRelayStream(nodeID, ch)
 	defer s.coord.UnregisterRelayStream(nodeID)
 
-	// Sender goroutine: drain the channel and write to the stream.
 	sendDone := make(chan struct{})
 	go func() {
 		defer close(sendDone)
-		for msg := range ch {
-			if err := stream.Send(msg); err != nil {
-				slog.Debug("relay send error", "node_id", nodeID, "err", err)
-				return
-			}
-		}
+		pumpSend(stream.Send, ch, "relay", nodeID)
 	}()
 
-	// Receiver loop: forward inbound frames to their destination node.
-	for {
-		frame, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			slog.Debug("relay recv error", "node_id", nodeID, "err", err)
-			break
-		}
+	pumpRecv(stream.Recv, "relay", nodeID, func(frame *zetapb.RelayFrame) {
 		s.coord.HandleRelayFrame(nodeID, frame)
-	}
+	})
 
 	close(ch)
 	<-sendDone
@@ -170,6 +140,33 @@ func (s *GRPCServer) Relay(stream zetapb.CoordinatorService_RelayServer) error {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// pumpSend drains ch, writing each message to the stream via send, until ch
+// is closed or send fails.
+func pumpSend[T any](send func(T) error, ch <-chan T, logTag, nodeID string) {
+	for msg := range ch {
+		if err := send(msg); err != nil {
+			slog.Debug(logTag+" send error", "node_id", nodeID, "err", err)
+			return
+		}
+	}
+}
+
+// pumpRecv reads from the stream via recv, calling onMsg for each message,
+// until EOF or an error.
+func pumpRecv[T any](recv func() (T, error), logTag, nodeID string, onMsg func(T)) {
+	for {
+		msg, err := recv()
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			slog.Debug(logTag+" recv error", "node_id", nodeID, "err", err)
+			return
+		}
+		onMsg(msg)
+	}
+}
 
 func nodeIDFromMetadata(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)

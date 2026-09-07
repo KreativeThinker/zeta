@@ -111,19 +111,25 @@ func handleGetDevice(coord *coordinator.Coordinator, database *db.DB) http.Handl
 			return
 		}
 		svcs, _ := database.ListServicesByDevice(id)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id":            dev.ID,
-			"hostname":      dev.Hostname,
-			"os":            dev.OS,
-			"mesh_ip":       dev.MeshIP,
-			"wg_public_key": dev.WGPublicKey,
-			"last_endpoint": dev.LastEndpoint,
-			"last_seen":     dev.LastSeen,
-			"agent_version": dev.AgentVersion,
-			"online":        coord.IsOnline(dev.ID),
-			"created_at":    dev.CreatedAt,
-			"services":      svcs,
-		})
+		writeJSON(w, http.StatusOK, deviceResponse(*dev, coord.IsOnline(dev.ID), svcs))
+	}
+}
+
+// deviceResponse shapes a device + its live status + its services into the
+// JSON response body used by the device detail endpoint.
+func deviceResponse(dev db.Device, online bool, svcs []db.Service) map[string]any {
+	return map[string]any{
+		"id":            dev.ID,
+		"hostname":      dev.Hostname,
+		"os":            dev.OS,
+		"mesh_ip":       dev.MeshIP,
+		"wg_public_key": dev.WGPublicKey,
+		"last_endpoint": dev.LastEndpoint,
+		"last_seen":     dev.LastSeen,
+		"agent_version": dev.AgentVersion,
+		"online":        online,
+		"created_at":    dev.CreatedAt,
+		"services":      svcs,
 	}
 }
 
@@ -139,14 +145,23 @@ func handleDeleteDevice(coord *coordinator.Coordinator, database *db.DB) http.Ha
 			writeError(w, http.StatusNotFound, "device not found")
 			return
 		}
-		if err := database.DeleteDevice(id); err != nil {
+		if err := deleteDeviceAndAudit(coord, database, *dev); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		_ = database.AppendAudit("device.deleted", id, map[string]string{"hostname": dev.Hostname})
-		go coord.NotifyAll()
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// deleteDeviceAndAudit deletes dev, records an audit entry, and notifies
+// connected peers of the topology change.
+func deleteDeviceAndAudit(coord *coordinator.Coordinator, database *db.DB, dev db.Device) error {
+	if err := database.DeleteDevice(dev.ID); err != nil {
+		return err
+	}
+	_ = database.AppendAudit("device.deleted", dev.ID, map[string]string{"hostname": dev.Hostname})
+	go coord.NotifyAll()
+	return nil
 }
 
 // ── Preauth Keys ──────────────────────────────────────────────────────────────
@@ -177,11 +192,8 @@ func handleCreatePreauthKey(coord *coordinator.Coordinator) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
-		if req.TTLHours <= 0 {
-			req.TTLHours = 24
-		}
 
-		k, err := coord.GeneratePreauthKey(req.Label, time.Duration(req.TTLHours)*time.Hour, req.Reusable)
+		k, err := coord.GeneratePreauthKey(req.Label, preauthTTL(req.TTLHours), req.Reusable)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -199,6 +211,14 @@ func handleDeletePreauthKey(database *db.DB) http.HandlerFunc {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// preauthTTL defaults a non-positive hour count to 24h and converts to a Duration.
+func preauthTTL(hours int) time.Duration {
+	if hours <= 0 {
+		hours = 24
+	}
+	return time.Duration(hours) * time.Hour
 }
 
 // ── Audit Log ─────────────────────────────────────────────────────────────────

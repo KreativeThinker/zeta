@@ -13,13 +13,8 @@ import (
 	"github.com/kreativethinker/zeta/agent/internal/agentapi"
 	"github.com/kreativethinker/zeta/agent/internal/config"
 	"github.com/kreativethinker/zeta/agent/internal/control"
-	"github.com/kreativethinker/zeta/agent/internal/dns"
-	"github.com/kreativethinker/zeta/agent/internal/dockerdiscovery"
-	"github.com/kreativethinker/zeta/agent/internal/firewall"
-	"github.com/kreativethinker/zeta/agent/internal/proxy"
 	"github.com/kreativethinker/zeta/agent/internal/route"
 	"github.com/kreativethinker/zeta/agent/internal/state"
-	"github.com/kreativethinker/zeta/agent/internal/wg"
 	"github.com/kreativethinker/zeta/proto/zetapb"
 )
 
@@ -74,28 +69,12 @@ func main() {
 		slog.Info("loaded existing state", "node_id", st.NodeID, "mesh_ip", st.MeshIP)
 	}
 
-	wgMgr, err := wg.New(cfg.WireGuard.Interface)
+	wgMgr, err := setupWireGuard(cfg, st)
 	if err != nil {
-		slog.Error("creating WireGuard manager", "err", err)
+		slog.Error("setting up WireGuard", "err", err)
 		os.Exit(1)
 	}
 	defer wgMgr.Close()
-
-	if err := wgMgr.EnsureInterface(); err != nil {
-		slog.Error("ensuring WireGuard interface", "err", err)
-		os.Exit(1)
-	}
-	if err := wgMgr.Configure(st.WGPrivateKey, cfg.WireGuard.ListenPort); err != nil {
-		slog.Error("configuring WireGuard", "err", err)
-		os.Exit(1)
-	}
-	if err := wgMgr.AssignAddress(st.MeshIP, "100.64.0.0/10"); err != nil {
-		slog.Error("assigning mesh address", "err", err)
-		os.Exit(1)
-	}
-	if err := route.AddMeshRoute("100.64.0.0/10", cfg.WireGuard.Interface); err != nil {
-		slog.Warn("adding mesh route", "err", err)
-	}
 
 	resolvedZetafilePath := config.ResolveZetafilePath(*zetafilePath)
 	zf, err := config.LoadZetafile(resolvedZetafilePath)
@@ -104,28 +83,17 @@ func main() {
 		zf = &config.Zetafile{}
 	}
 
-	resolver := dns.New(cfg.DNS.ListenAddr, cfg.DNS.Upstream)
-	if err := resolver.Start(); err != nil {
-		slog.Warn("starting DNS resolver", "err", err)
-	} else {
-		teardownDNS, err := dns.SetupSystemDNS(cfg.DNS.ListenAddr, cfg.WireGuard.Interface, "mesh")
-		if err != nil {
-			slog.Warn("configuring system DNS", "err", err)
-		}
-		defer teardownDNS()
-	}
-	defer resolver.Stop()
+	resolver, teardownResolver := setupResolver(cfg)
+	defer teardownResolver()
 
-	proxyMgr := proxy.New()
-	trustedProxies := append(cfg.Proxy.TrustedProxies, st.MeshIP)
-	proxyMgr.SetTrustedProxies(trustedProxies)
-	if err := proxyMgr.Start(cfg.Proxy.Addr); err != nil {
-		slog.Error("starting proxy", "err", err)
+	proxyMgr, err := setupProxy(cfg, st.MeshIP)
+	if err != nil {
+		slog.Error("setting up proxy", "err", err)
 		os.Exit(1)
 	}
 	defer proxyMgr.Stop()
 
-	fwMgr := firewall.New(cfg.WireGuard.Interface, zf.Firewall.Backend)
+	fwMgr := setupFirewall(cfg, zf)
 	defer fwMgr.Flush()
 
 	a := NewAgent(cfg, st, wgMgr, resolver, proxyMgr, fwMgr)
@@ -142,16 +110,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if dw, err := dockerdiscovery.New(); err != nil {
-		slog.Info("docker discovery unavailable, skipping", "err", err)
-	} else {
-		if svcs, err := dw.Discover(ctx); err != nil {
-			slog.Warn("initial docker service discovery failed", "err", err)
-		} else {
-			a.UpdateDockerServices(svcs)
-		}
-		go dw.Watch(ctx, a.UpdateDockerServices)
-	}
+	setupDockerDiscovery(ctx, a)
 
 	if err := config.WatchZetafile(ctx, resolvedZetafilePath, a.UpdateZetafile); err != nil {
 		slog.Warn("zetafile hot-reload unavailable", "err", err)
