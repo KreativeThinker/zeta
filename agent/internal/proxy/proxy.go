@@ -38,6 +38,7 @@ type Manager struct {
 
 type route struct {
 	targetAddr string
+	allowAll   bool
 	allowedPKs map[string]struct{}
 	rp         *httputil.ReverseProxy
 }
@@ -120,7 +121,9 @@ func (m *Manager) Sync(services []ServiceConfig, ipToPK, ipToHost map[string]str
 	}
 
 	for name, cfg := range desired {
+		allowAll := isWildcard(cfg.AllowedPKs)
 		if r, ok := m.routes[name]; ok && r.targetAddr == cfg.TargetAddr {
+			r.allowAll = allowAll
 			r.allowedPKs = setOf(cfg.AllowedPKs)
 			continue
 		}
@@ -131,6 +134,7 @@ func (m *Manager) Sync(services []ServiceConfig, ipToPK, ipToHost map[string]str
 		}
 		m.routes[name] = &route{
 			targetAddr: cfg.TargetAddr,
+			allowAll:   allowAll,
 			allowedPKs: setOf(cfg.AllowedPKs),
 			rp:         httputil.NewSingleHostReverseProxy(target),
 		}
@@ -169,7 +173,9 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	pk, pkKnown := m.ipToPK[srcIP]
 	hostname := m.ipToHost[srcIP]
 	var allowed bool
-	if routeOk && pkKnown {
+	if routeOk && rt.allowAll {
+		allowed = true
+	} else if routeOk && pkKnown {
 		_, allowed = rt.allowedPKs[pk]
 	}
 	m.mu.RUnlock()
@@ -225,6 +231,16 @@ func (m *Manager) isTrustedProxy(ip net.IP) bool {
 	defer m.mu.RUnlock()
 	for _, n := range m.trustedNets {
 		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// isWildcard reports whether an ACL list grants access to any enrolled mesh peer.
+func isWildcard(pks []string) bool {
+	for _, pk := range pks {
+		if pk == "*" {
 			return true
 		}
 	}

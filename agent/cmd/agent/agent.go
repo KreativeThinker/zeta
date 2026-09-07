@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,9 +41,10 @@ type Agent struct {
 	proxyMgr *proxy.Manager
 	fwMgr    *firewall.Manager // nil if nft unavailable
 
-	zf        atomic.Pointer[config.Zetafile]
-	hostToIP  atomic.Pointer[map[string]string]
-	proxyPort int
+	zf         atomic.Pointer[config.Zetafile]
+	dockerSvcs atomic.Pointer[[]config.ZetaService]
+	hostToIP   atomic.Pointer[map[string]string]
+	proxyPort  int
 
 	relayClient *relay.Client
 	pathMgr     *pathsel.Manager
@@ -91,13 +93,53 @@ func (a *Agent) setSend(ch chan<- *zetapb.SyncUpdate) {
 	a.mu.Unlock()
 }
 
-func (a *Agent) announceServices(sendCh chan<- *zetapb.SyncUpdate) {
-	zf := a.zf.Load()
-	if zf == nil {
-		return
+// UpdateDockerServices replaces the set of services discovered via Docker
+// Compose labels and re-announces/re-applies firewall rules, mirroring
+// UpdateZetafile.
+func (a *Agent) UpdateDockerServices(svcs []config.ZetaService) {
+	a.dockerSvcs.Store(&svcs)
+	a.mu.Lock()
+	ch := a.send
+	a.mu.Unlock()
+	if ch != nil {
+		a.announceServices(ch)
 	}
-	decls := make([]*zetapb.ServiceDecl, 0, len(zf.Services))
-	for _, s := range zf.Services {
+	a.applyFirewall()
+}
+
+// effectiveServices merges zetafile services with Docker-label-discovered
+// services. Docker-declared services win on name collision since they
+// reflect live container state.
+func (a *Agent) effectiveServices() []config.ZetaService {
+	var zfSvcs []config.ZetaService
+	if zf := a.zf.Load(); zf != nil {
+		zfSvcs = zf.Services
+	}
+	var dockerSvcs []config.ZetaService
+	if p := a.dockerSvcs.Load(); p != nil {
+		dockerSvcs = *p
+	}
+	if len(dockerSvcs) == 0 {
+		return zfSvcs
+	}
+	merged := make(map[string]config.ZetaService, len(zfSvcs)+len(dockerSvcs))
+	for _, s := range zfSvcs {
+		merged[s.Name] = s
+	}
+	for _, s := range dockerSvcs {
+		merged[s.Name] = s
+	}
+	out := make([]config.ZetaService, 0, len(merged))
+	for _, s := range merged {
+		out = append(out, s)
+	}
+	return out
+}
+
+func (a *Agent) announceServices(sendCh chan<- *zetapb.SyncUpdate) {
+	svcs := a.effectiveServices()
+	decls := make([]*zetapb.ServiceDecl, 0, len(svcs))
+	for _, s := range svcs {
 		decls = append(decls, &zetapb.ServiceDecl{
 			Name:             s.Name,
 			TargetAddr:       s.Target,
@@ -139,9 +181,13 @@ func (a *Agent) applyFirewall() {
 
 	// Derive per-service allow rules from access lists + current peer IPs.
 	var serviceRules []firewall.Rule
-	if zf != nil && hostToIPPtr != nil {
+	if hostToIPPtr != nil {
 		hostToIP := *hostToIPPtr
-		for _, svc := range zf.Services {
+		for _, svc := range a.effectiveServices() {
+			if slices.Contains(svc.Access, "*") {
+				serviceRules = append(serviceRules, firewall.Rule{}) // any source on the mesh interface
+				continue
+			}
 			var ips []string
 			for _, entry := range svc.Access {
 				hostname, _ := strings.CutPrefix(entry, "user:")
@@ -200,7 +246,6 @@ func (a *Agent) handleSyncResponse(msg *zetapb.SyncResponse) {
 	switch p := msg.Payload.(type) {
 	case *zetapb.SyncResponse_NetworkMap:
 		nm := p.NetworkMap
-		zf := a.zf.Load()
 
 		selfHostname := a.st.Domain
 		if idx := strings.Index(selfHostname, "."); idx != -1 {
@@ -237,7 +282,7 @@ func (a *Agent) handleSyncResponse(msg *zetapb.SyncResponse) {
 			a.resolver.UpdateFromNetworkMap(nm.Peers, nm.Dns.MeshDomain)
 		}
 
-		if zf != nil && len(zf.Services) > 0 {
+		if svcs := a.effectiveServices(); len(svcs) > 0 {
 			svcPKs := make(map[string][]string)
 			for _, peer := range nm.Peers {
 				if peer.NodeId == a.st.NodeID {
@@ -247,7 +292,7 @@ func (a *Agent) handleSyncResponse(msg *zetapb.SyncResponse) {
 				}
 			}
 			var proxySvcs []proxy.ServiceConfig
-			for _, s := range zf.Services {
+			for _, s := range svcs {
 				proxySvcs = append(proxySvcs, proxy.ServiceConfig{
 					Name:       s.Name,
 					TargetAddr: s.Target,
@@ -311,7 +356,7 @@ func (a *Agent) Run(ctx context.Context, client *control.Client) {
 			close(relayDone)
 		}
 
-		if zf := a.zf.Load(); zf != nil && len(zf.Services) > 0 {
+		if zf := a.zf.Load(); zf != nil && len(a.effectiveServices()) > 0 {
 			a.announceServices(sendCh)
 		}
 

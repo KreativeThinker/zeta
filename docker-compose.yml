@@ -32,6 +32,7 @@ services:
       - controller
     volumes:
       - agent-data:/var/lib/zeta
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # for zeta.service.* label discovery
     environment:
       ZETA_COORDINATOR: "localhost:50051"
     command:

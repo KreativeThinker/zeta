@@ -276,6 +276,13 @@ func (c *Coordinator) HandleSyncUpdate(nodeID string, upd *zetapb.SyncUpdate) er
 				TargetAddr: decl.TargetAddr,
 			}
 			for _, entry := range decl.AllowedHostnames {
+				if entry == "*" {
+					// Wildcard: open to any enrolled mesh peer, no per-hostname
+					// resolution. Real per-user ACLs are a later phase (auth
+					// middleware); this sentinel is checked at the proxy layer.
+					svc.AllowedPKs = append(svc.AllowedPKs, "*")
+					continue
+				}
 				hostname := entry
 				// Strip "user:" prefix.
 				if h, ok := strings.CutPrefix(entry, "user:"); ok {

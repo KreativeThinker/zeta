@@ -28,7 +28,7 @@ android {
                 "proguard-rules.pro",
             )
             val keystoreFile = System.getenv("KEYSTORE_FILE")
-            if (keystoreFile != null) {
+            if (!keystoreFile.isNullOrBlank()) {
                 signingConfig =
                     signingConfigs.create("release").also {
                         it.storeFile = file(keystoreFile)

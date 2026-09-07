@@ -14,6 +14,7 @@ import (
 	"github.com/kreativethinker/zeta/agent/internal/config"
 	"github.com/kreativethinker/zeta/agent/internal/control"
 	"github.com/kreativethinker/zeta/agent/internal/dns"
+	"github.com/kreativethinker/zeta/agent/internal/dockerdiscovery"
 	"github.com/kreativethinker/zeta/agent/internal/firewall"
 	"github.com/kreativethinker/zeta/agent/internal/proxy"
 	"github.com/kreativethinker/zeta/agent/internal/route"
@@ -140,6 +141,17 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	if dw, err := dockerdiscovery.New(); err != nil {
+		slog.Info("docker discovery unavailable, skipping", "err", err)
+	} else {
+		if svcs, err := dw.Discover(ctx); err != nil {
+			slog.Warn("initial docker service discovery failed", "err", err)
+		} else {
+			a.UpdateDockerServices(svcs)
+		}
+		go dw.Watch(ctx, a.UpdateDockerServices)
+	}
 
 	if err := config.WatchZetafile(ctx, resolvedZetafilePath, a.UpdateZetafile); err != nil {
 		slog.Warn("zetafile hot-reload unavailable", "err", err)
