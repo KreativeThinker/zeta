@@ -138,75 +138,59 @@ The DNS records are rebuilt on every NetworkMap push. Only `A` records are serve
 
 ---
 
-## HTTP proxy
+## Proxy gateway
 
-The agent proxy listens on a single TCP port (default `0.0.0.0:1080`) and routes HTTP requests by the `Host` header to the correct local backend. All services on a device share this one listener.
+Caddy (`lucaslorentz/caddy-docker-proxy`) is the only reverse proxy — it reads
+container labels directly off the Docker socket and does all HTTP routing,
+for both public and private services. The agent's own proxy is now a thin
+pass-through in front of it: it listens on a single TCP port (default
+`0.0.0.0:1080`) and forwards every request, `Host` header untouched, to
+Caddy's private-only bind (default `127.0.0.1:8888`).
 
-### Routing
+### Public vs private
 
-The proxy extracts the service name from the first label of the `Host` header:
-
-```
-Host: files.shire.mesh  →  service name: "files"
-```
-
-It looks up the service's target address and reverse-proxies the request there.
-
-### ACL enforcement
-
-Before proxying, the request's source is identified:
-
-1. If the TCP source IP is in the mesh CIDR (`100.64.0.0/10`), it is a direct WireGuard connection — use that IP.
-2. If the TCP source IP is outside the mesh CIDR (e.g. a local reverse proxy like Caddy), read `X-Forwarded-For` for the original peer IP.
-
-The IP is mapped to a WireGuard public key using the NetworkMap's `ipToPK` table. If the pubkey is not in the service's `allowedPKs` set, the connection is rejected with `403 Forbidden`.
-
-Access events (time, service, source IP, hostname, allowed/denied) are logged in a ring buffer and readable via the management API.
-
-### Caddy integration
-
-If Caddy runs on the same host on ports 80/443, you can route mesh traffic through it rather than exposing port 1080 directly:
-
-```
-*.shire.mesh {
-    tls internal
-    reverse_proxy host.docker.internal:1080
-}
-```
-
-Caddy sets `X-Forwarded-For` automatically. The agent proxy reads it and performs the ACL check against the original peer's mesh IP.
-
-Add to your Caddy Docker service to make `host.docker.internal` resolve:
+Each service container carries a `caddy` label with its full hostname, plus
+an optional `zeta.public` flag:
 
 ```yaml
-extra_hosts:
-  - "host.docker.internal:host-gateway"
+labels:
+  caddy: files.shire.mesh
+  caddy.reverse_proxy: "{{upstreams 9010}}"
+  zeta.access: user:graveyard,user:laptop
 ```
+
+- **Private (default)** — no `zeta.public` label. Caddy binds this site to
+  `127.0.0.1:8888` only, reachable exclusively through the agent's gateway on
+  1080. This is the same boundary the old proxy enforced — 1080 is the real
+  entry point, and the host firewall (`agent/internal/firewall`, opt-in) is
+  what keeps it off the public interface.
+- **Public** (`zeta.public: "true"`) — Caddy binds this site to
+  `0.0.0.0:443`/`:80` with automatic HTTPS. Internet clients hit Caddy
+  directly; the agent's gateway is never involved.
+
+Only private services are registered with zeta's mesh DNS (the service name
+is the first label of the `caddy` hostname). Public services use their real
+domain and Caddy's own ACME — zeta doesn't need to know about them at all.
+
+### ACL enforcement — not yet wired up
+
+`zeta.access` is parsed and carried through to the controller, but nothing
+currently enforces it — any mesh peer that resolves a private service's
+hostname can reach it through Caddy. This mirrors an existing gap: the mesh
+itself has no port-level restriction between peers (any peer can already dial
+any peer's port directly — see `docs/DISTRIBUTED_ARCHITECTURE_PLAN.md`), so
+this isn't a new hole, just an accepted interim state. Real enforcement is
+planned as a separate service, not part of the proxy path.
 
 ---
 
-## zetafile
+## Services
 
-`zetafile.yml` declares which local services this agent exposes to the mesh. The agent watches for changes via the management API and re-announces to the controller whenever the file is updated.
-
-### Format
-
-```yaml
-services:
-  - name: files
-    target: 127.0.0.1:9010
-    access:
-      - user:graveyard
-      - user:laptop
-```
-
-### Fields
-
-| Field | Required | Description |
-|---|---|---|
-| `name` | Yes | Service identifier. Becomes the first DNS label: `<name>.<hostname>.mesh` |
-| `target` | Yes | Local address to proxy to. Can be any `host:port` reachable from the agent process |
-| `access` | No | List of mesh hostnames allowed to connect (`user:<hostname>`). Empty = no access |
+Services are declared entirely through Docker container labels — see
+[Public vs private](#public-vs-private) above. There is no manual/bare-metal
+service path: every service needs a Docker container with a `caddy` label
+for Caddy to route to. `zetafile.yml` is used only for firewall
+configuration now — see [architecture.md](architecture.md) for its format.
 
 ### DNS naming
 
@@ -215,37 +199,32 @@ services:
       files    .    shire       .mesh
 ```
 
-Resolves to the agent's mesh IP. The proxy reads the `Host` header to determine which service to route the request to.
+Resolves to the agent's mesh IP. Caddy reads the `Host` header (forwarded
+unmodified by the agent's gateway) to determine which service to route the
+request to.
 
 ### Access syntax
 
-The `user:<hostname>` syntax refers to the mesh hostname of the peer device (the hostname it registered with, not its DNS FQDN). The controller resolves this to the device's current WireGuard public key at announcement time.
+The `user:<hostname>` syntax refers to the mesh hostname of the peer device (the hostname it registered with, not its DNS FQDN). The controller resolves this to the device's current WireGuard public key at announcement time. **Not currently enforced** — see [ACL enforcement — not yet wired up](#acl-enforcement--not-yet-wired-up).
 
 ```yaml
-access:
-  - user:graveyard    # device with hostname "graveyard"
-  - user:laptop       # device with hostname "laptop"
+zeta.access: user:graveyard,user:laptop
 ```
-
-If a device re-enrolls (generating a new WireGuard key), services announced before the re-enrollment will deny the newly-keyed device until the service is re-announced.
 
 ### Applying changes
 
-The zetafile is re-announced to the controller via the management API (`POST /api/services`). The controller resolves the updated access list and pushes a new NetworkMap to all peers. Changes take effect on connected agents within seconds.
+Services are re-announced to the controller automatically whenever Docker container labels change (the agent watches Docker events). The controller resolves the updated access list and pushes a new NetworkMap to all peers. Changes take effect on connected agents within seconds — no restart or manual re-announce needed.
 
 ---
 
 ## Management API
 
-The agent exposes a local HTTP API at `127.0.0.1:6080` (configurable via `ZETA_HTTP_ADDR`). This is the interface used by the local web UI embedded in the agent binary.
+The agent exposes a local HTTP API at `127.0.0.1:6080` (configurable via `ZETA_HTTP_ADDR`). This is the interface used by the local web UI embedded in the agent binary. It's read-only — services are declared via Docker labels, not through this API.
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/status` | Node ID, hostname, mesh IP |
-| `GET` | `/api/services` | List services from zetafile |
-| `POST` | `/api/services` | Add or update a service |
-| `DELETE` | `/api/services/{name}` | Remove a service |
-| `GET` | `/api/logs` | Last 200 proxy access events |
+| `GET` | `/api/services` | List currently discovered private (mesh-only) services |
 
 ### `GET /api/status`
 
@@ -257,30 +236,13 @@ The agent exposes a local HTTP API at `127.0.0.1:6080` (configurable via `ZETA_H
 }
 ```
 
-### `POST /api/services`
-
-```json
-{
-  "name": "files",
-  "target": "127.0.0.1:9010",
-  "access": ["user:graveyard"]
-}
-```
-
-Saves to `zetafile.yml` and re-announces to the controller.
-
-### `GET /api/logs`
-
-Returns up to 200 most recent proxy access events, newest first.
+### `GET /api/services`
 
 ```json
 [
   {
-    "time": "2026-06-13T10:00:00Z",
-    "service": "files",
-    "source_ip": "100.64.0.3",
-    "hostname": "graveyard",
-    "allowed": true
+    "name": "files",
+    "access": ["user:graveyard"]
   }
 ]
 ```
@@ -297,10 +259,9 @@ docker run -d \
   --privileged \
   --network host \
   -v zeta-agent-state:/var/lib/zeta \
-  -v ./zetafile.yml:/etc/zeta/zetafile.yml \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e ZETA_COORDINATOR=<controller-ip>:50051 \
   ghcr.io/kreativethinker/zeta/agent:latest \
-  --zetafile /etc/zeta/zetafile.yml \
   --preauth-key <key>
 ```
 

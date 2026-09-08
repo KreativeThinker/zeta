@@ -37,18 +37,20 @@ func SaveZetafile(path string, zf *Zetafile) error {
 }
 
 type Zetafile struct {
-	Services []ZetaService  `yaml:"services"`
 	Firewall FirewallConfig `yaml:"firewall"`
 }
 
+// ZetaService is a mesh service discovered via Docker container labels
+// (agent/internal/dockerdiscovery). There is no manually-declared/bare-metal
+// path anymore — every service needs a Docker container with `caddy` labels
+// for Caddy to route to.
 type ZetaService struct {
 	Name   string   `yaml:"name"   json:"name"`
-	Target string   `yaml:"target" json:"target"`
 	Access []string `yaml:"access" json:"access"`
 }
 
 type FirewallConfig struct {
-	Backend string        `yaml:"backend"` // "ufw" or "nft"; empty = auto-detect
+	Backend string         `yaml:"backend"` // "ufw" or "nft"; empty = auto-detect
 	Rules   []FirewallRule `yaml:"rules"`
 }
 
@@ -118,7 +120,7 @@ func WatchZetafile(ctx context.Context, path string, onChange func(*Zetafile)) e
 					slog.Warn("reloading zetafile", "err", err)
 					continue
 				}
-				slog.Info("zetafile reloaded", "path", path, "services", len(zf.Services))
+				slog.Info("zetafile reloaded", "path", path, "firewall_rules", len(zf.Firewall.Rules))
 				onChange(zf)
 			}
 		}

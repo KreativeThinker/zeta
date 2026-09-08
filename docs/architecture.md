@@ -77,13 +77,13 @@ Runs as a single binary (`zeta-agent`) on each device. Requires root (or `CAP_NE
 - **WireGuard manager** — creates and configures the `zeta0` interface; applies peer configs from NetworkMap updates.
 - **STUN client** — discovers the device's external IP:port via `stun.l.google.com:19302` using IPv4. Reports the result to the controller every 30 seconds.
 - **DNS resolver** — in-process DNS server (default `127.0.0.1:53`) that answers `A` queries for `*.mesh` names. Mesh hostnames resolve to peer mesh IPs. Service names (`service.hostname.mesh`) also resolve to the host's mesh IP.
-- **HTTP proxy** — single-port reverse proxy (default `0.0.0.0:1080`) that routes requests by `Host` header to the correct local backend. Enforces per-service ACLs using the WireGuard public key of the source IP. Supports traffic arriving directly from WireGuard peers or via a local reverse proxy (e.g. Caddy), reading `X-Forwarded-For` when the direct source is not a mesh IP.
+- **Proxy gateway** — single-port pass-through (default `0.0.0.0:1080`) that forwards every request, `Host` header unmodified, to a local Caddy instance (`lucaslorentz/caddy-docker-proxy`). Caddy is the only actual reverse proxy — it reads container labels off the Docker socket directly and does all HTTP routing, for both public and private services. See [agent.md](agent.md#proxy-gateway).
 - **gRPC sync client** — maintains the persistent `Sync` stream to the controller with exponential backoff reconnection.
-- **Management UI** — lightweight HTTP API (default `127.0.0.1:6080`) for viewing status, managing the zetafile, and reading proxy access logs.
+- **Management UI** — lightweight, read-only HTTP API (default `127.0.0.1:6080`) for viewing status and currently discovered services.
 
 ### zetafile
 
-A YAML file on each agent (`zetafile.yml`) declaring which local services to expose to the mesh. See [agent.md](agent.md#zetafile) for the full reference.
+A YAML file on each agent (`zetafile.yml`) declaring firewall rules. Services are no longer declared here — they're discovered from Docker container `caddy`/`zeta.*` labels. See [agent.md](agent.md#proxy-gateway).
 
 ---
 
@@ -132,8 +132,8 @@ Agent (shire)                   Controller                  Agent (graveyard)
   │                                  │                            │
   │── ServiceAnnounce ──────────────►│                            │
   │   [{name: "files",               │  1. Resolve "user:graveyard"
-  │     target: "127.0.0.1:9010",    │     → graveyard's WG pubkey
-  │     allowed: ["user:graveyard"]} │  2. DELETE + INSERT services
+  │     allowed: ["user:graveyard"]} │     → graveyard's WG pubkey
+  │                                  │  2. DELETE + INSERT services
   │                                  │  3. NotifyAll()
   │◄── NetworkMap (updated) ─────────│──────────────────────────►│
   │    (self entry includes          │                            │
@@ -142,7 +142,7 @@ Agent (shire)                   Controller                  Agent (graveyard)
   │                                  │  - its allowed pubkeys     │
 ```
 
-The controller resolves `user:<hostname>` access entries to WireGuard public keys at announcement time. This means access is bound to the key that was active when the service was announced — re-enrollment with a new key revokes access automatically.
+The controller resolves `user:<hostname>` access entries to WireGuard public keys at announcement time. This means access is bound to the key that was active when the service was announced — re-enrollment with a new key revokes access automatically. **Not currently enforced against traffic** — see the note in [agent.md](agent.md#acl-enforcement--not-yet-wired-up).
 
 ---
 
@@ -176,18 +176,13 @@ Only `A` (IPv4) records are served. `AAAA` queries fall through to upstream.
 
 ---
 
-## Proxy and ACL enforcement
+## Proxy gateway
 
-The agent proxy listens on a single TCP port (default `0.0.0.0:1080`). For each incoming HTTP request:
+The agent's proxy listens on a single TCP port (default `0.0.0.0:1080`) and is a pure pass-through: every request is forwarded, `Host` header unmodified, to a local Caddy instance (`lucaslorentz/caddy-docker-proxy`, default `127.0.0.1:8888`). Caddy does the actual per-service routing, matching the request's `Host` header against each container's `caddy` label.
 
-1. Extract the source IP from the TCP connection.
-2. If the source is not in the mesh CIDR (`100.64.0.0/10`) — i.e. traffic arrived via a local reverse proxy — read the `X-Forwarded-For` header for the original mesh peer IP.
-3. Map the mesh IP → WireGuard public key using the `ipToPK` table (populated from the NetworkMap).
-4. Look up the service by the first label of the `Host` header.
-5. Check whether the pubkey is in that service's `allowedPKs` set (populated from the NetworkMap's resolved ACL).
-6. If allowed, reverse-proxy the request to the service's configured `target` address.
+Public services (`zeta.public: "true"` container label) bypass this gateway entirely — Caddy binds them straight to `0.0.0.0:443`/`:80` with automatic HTTPS.
 
-Access events (allowed and denied) are recorded in a ring buffer and exposed via the agent management API.
+No ACL is enforced in this path today — see the note in [agent.md](agent.md#acl-enforcement--not-yet-wired-up).
 
 ---
 
@@ -206,9 +201,11 @@ Access events (allowed and denied) are recorded in a ring buffer and exposed via
 [shire WireGuard: zeta0]
       │  decrypt, deliver to 100.64.0.3:1080
       ▼
-[shire proxy: 0.0.0.0:1080]
-      │  Host: files.shire.mesh
-      │  ACL: graveyard pubkey ∈ allowedPKs["files"]?
+[shire proxy gateway: 0.0.0.0:1080]
+      │  Host: files.shire.mesh  (passed through unmodified)
+      ▼
+[shire Caddy: 127.0.0.1:8888]
+      │  caddy label match: files.shire.mesh
       ▼
 [shire backend: 127.0.0.1:9010]
 ```

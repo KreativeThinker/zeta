@@ -35,7 +35,7 @@ type Agent struct {
 	st       *state.State
 	wgMgr    *wg.Manager
 	resolver *dns.Resolver
-	proxyMgr *proxy.Manager
+	gateway  *proxy.Gateway
 	fwMgr    *firewall.Manager // nil if nft unavailable
 
 	zf         atomic.Pointer[config.Zetafile]
@@ -53,7 +53,7 @@ type Agent struct {
 	send chan<- *zetapb.SyncUpdate // guarded by mu; nil when disconnected
 }
 
-func NewAgent(cfg *config.Config, st *state.State, wgMgr *wg.Manager, resolver *dns.Resolver, proxyMgr *proxy.Manager, fwMgr *firewall.Manager) *Agent {
+func NewAgent(cfg *config.Config, st *state.State, wgMgr *wg.Manager, resolver *dns.Resolver, gateway *proxy.Gateway, fwMgr *firewall.Manager) *Agent {
 	_, portStr, _ := net.SplitHostPort(cfg.Proxy.Addr)
 	proxyPort, _ := strconv.Atoi(portStr)
 	return &Agent{
@@ -61,7 +61,7 @@ func NewAgent(cfg *config.Config, st *state.State, wgMgr *wg.Manager, resolver *
 		st:          st,
 		wgMgr:       wgMgr,
 		resolver:    resolver,
-		proxyMgr:    proxyMgr,
+		gateway:     gateway,
 		fwMgr:       fwMgr,
 		proxyPort:   proxyPort,
 		relayClient: relay.New(cfg.WireGuard.ListenPort),

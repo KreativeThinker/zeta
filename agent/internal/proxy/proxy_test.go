@@ -6,42 +6,28 @@ import (
 	"testing"
 )
 
-func TestServeHTTPWildcardAllowsAnyKnownPeer(t *testing.T) {
-	m := New()
-	m.Sync(
-		[]ServiceConfig{{Name: "web", TargetAddr: "127.0.0.1:1", AllowedPKs: []string{"*"}}},
-		map[string]string{"100.64.0.5": "some-unlisted-pubkey"},
-		map[string]string{"100.64.0.5": "shire"},
-	)
+// TestGatewayForwardsHostUnmodified verifies the gateway is a pure
+// pass-through: it must forward to the configured Caddy address without
+// rewriting the inbound Host header, since Caddy's own labels match on the
+// full original hostname.
+func TestGatewayForwardsHostUnmodified(t *testing.T) {
+	var gotHost string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
 
-	req := httptest.NewRequest(http.MethodGet, "http://web.mesh/", nil)
-	req.RemoteAddr = "100.64.0.5:5555"
+	g := New(backend.Listener.Addr().String())
+
+	req := httptest.NewRequest(http.MethodGet, "http://myservice.shire.mesh/", nil)
 	rr := httptest.NewRecorder()
+	g.ServeHTTP(rr, req)
 
-	m.ServeHTTP(rr, req)
-
-	// The reverse proxy will fail to dial 127.0.0.1:1, but a non-403/404
-	// status proves the ACL check itself passed for an unlisted pubkey.
-	if rr.Code == http.StatusForbidden || rr.Code == http.StatusNotFound {
-		t.Fatalf("wildcard route rejected known mesh peer: status %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 from backend, got %d", rr.Code)
 	}
-}
-
-func TestServeHTTPWithoutWildcardDeniesUnlistedPeer(t *testing.T) {
-	m := New()
-	m.Sync(
-		[]ServiceConfig{{Name: "web", TargetAddr: "127.0.0.1:1", AllowedPKs: []string{"some-other-pubkey"}}},
-		map[string]string{"100.64.0.5": "some-unlisted-pubkey"},
-		map[string]string{"100.64.0.5": "shire"},
-	)
-
-	req := httptest.NewRequest(http.MethodGet, "http://web.mesh/", nil)
-	req.RemoteAddr = "100.64.0.5:5555"
-	rr := httptest.NewRecorder()
-
-	m.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for unlisted pubkey without wildcard, got %d", rr.Code)
+	if gotHost != "myservice.shire.mesh" {
+		t.Fatalf("expected Host header passed through unmodified, got %q", gotHost)
 	}
 }

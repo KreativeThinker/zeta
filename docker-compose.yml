@@ -32,13 +32,25 @@ services:
       - controller
     volumes:
       - agent-data:/var/lib/zeta
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # for zeta.service.* label discovery
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # for caddy/zeta.* label discovery
     environment:
       ZETA_COORDINATOR: "localhost:50051"
     command:
       - "--coordinator=localhost:50051"
       - "--preauth-key=${ZETA_PREAUTH_KEY:-}"
 
+  # Sole reverse proxy for this host, for both public and private services —
+  # config is generated entirely from container labels (see docs/deployment.md).
+  # network_mode: host so it shares the mesh interface visibility with agent.
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:2.9-alpine
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - caddy-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
 volumes:
   controller-data:
   agent-data:
+  caddy-data:

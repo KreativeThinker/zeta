@@ -20,10 +20,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
         Services
       </a>
-      <a href="/logs.html" class="nav-link">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>
-        Access Logs
-      </a>
       <div style="flex:1"></div>
       <div class="nav-info" id="mesh-ip"></div>
     </aside>
@@ -34,35 +30,6 @@
           <div class="page-title">Services</div>
           <div class="page-sub" id="svc-count">Loading…</div>
         </div>
-        <button class="btn btn-primary" id="btn-add">+ Add Service</button>
-      </div>
-
-      <div id="add-form" class="card" style="display:none;margin-bottom:1.5rem">
-        <div class="section-title" style="margin-bottom:1rem">New Service</div>
-        <div style="display:flex;flex-direction:column;gap:0.75rem">
-          <div class="form-row">
-            <div class="field">
-              <label for="f-name">Name</label>
-              <input id="f-name" type="text" placeholder="web" />
-            </div>
-            <div class="field">
-              <label for="f-port">Port</label>
-              <input id="f-port" type="number" placeholder="3000" style="width:120px" />
-            </div>
-            <div class="field">
-              <label for="f-target">Target</label>
-              <input id="f-target" type="text" placeholder="172.17.0.2:3000" style="width:220px" />
-            </div>
-          </div>
-          <div class="field">
-            <label for="f-access">Access <span style="font-weight:400;opacity:0.7">(one per line, e.g. user:graveyard)</span></label>
-            <textarea id="f-access" rows="3" placeholder="user:graveyard&#10;user:workstation" style="width:100%;max-width:480px;resize:vertical"></textarea>
-          </div>
-          <div style="display:flex;gap:0.75rem">
-            <button class="btn btn-primary" id="btn-save">Save</button>
-            <button class="btn btn-ghost" id="btn-cancel">Cancel</button>
-          </div>
-        </div>
       </div>
 
       <div id="content"></div>
@@ -70,8 +37,6 @@
   </div>
 
   <script>
-    let services = [];
-
     async function loadStatus() {
       try {
         const r = await fetch('/api/status');
@@ -84,14 +49,14 @@
     async function load() {
       try {
         const r = await fetch('/api/services');
-        services = await r.json() || [];
-        render();
+        const services = await r.json() || [];
+        render(services);
       } catch (e) {
         document.getElementById('content').innerHTML = `<div class="table-wrap"><div class="empty"><p>Error: ${e.message}</p></div></div>`;
       }
     }
 
-    function render() {
+    function render(services) {
       const count = services.length;
       document.getElementById('svc-count').textContent = `${count} service${count === 1 ? '' : 's'} exposed`;
 
@@ -100,8 +65,8 @@
           <div class="table-wrap">
             <div class="empty">
               <div class="empty-icon">⬡</div>
-              <p>No services exposed yet.</p>
-              <p style="margin-top:0.5rem">Click <strong>+ Add Service</strong> to expose a local service on the mesh.</p>
+              <p>No private mesh services discovered yet.</p>
+              <p style="margin-top:0.5rem">Add a <code>caddy</code> label to a container on this host to expose it — see docs/deployment.md.</p>
             </div>
           </div>`;
         return;
@@ -114,22 +79,9 @@
         const dnsName = `${svc.name}.${(document.getElementById('agent-hostname').textContent)}.mesh`;
         return `
           <div class="card" style="margin-bottom:1rem">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-              <div>
-                <div style="font-size:1rem;font-weight:700;color:var(--accent)">${esc(svc.name)}</div>
-                <div class="mono" style="font-size:0.78rem;color:var(--text);margin-top:0.15rem">${esc(dnsName)}</div>
-              </div>
-              <button class="btn btn-danger btn-sm" onclick="deleteSvc('${esc(svc.name)}')">Remove</button>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.75rem;margin-top:1rem">
-              <div class="info-block">
-                <div class="info-label">Target</div>
-                <div class="info-val mono">${esc(svc.target)}</div>
-              </div>
-              <div class="info-block">
-                <div class="info-label">Port</div>
-                <div class="info-val mono">${svc.port}</div>
-              </div>
+            <div>
+              <div style="font-size:1rem;font-weight:700;color:var(--accent)">${esc(svc.name)}</div>
+              <div class="mono" style="font-size:0.78rem;color:var(--text);margin-top:0.15rem">${esc(dnsName)}</div>
             </div>
             <div style="margin-top:1rem">
               <div class="info-label" style="margin-bottom:0.4rem">Access</div>
@@ -141,56 +93,9 @@
       document.getElementById('content').innerHTML = cards;
     }
 
-    async function deleteSvc(name) {
-      if (!confirm(`Remove service "${name}"?`)) return;
-      await fetch(`/api/services/${encodeURIComponent(name)}`, { method: 'DELETE' });
-      await load();
-    }
-
     function esc(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
-
-    document.getElementById('btn-add').addEventListener('click', () => {
-      const form = document.getElementById('add-form');
-      form.style.display = form.style.display === 'none' ? 'block' : 'none';
-    });
-
-    document.getElementById('btn-cancel').addEventListener('click', () => {
-      document.getElementById('add-form').style.display = 'none';
-    });
-
-    document.getElementById('btn-save').addEventListener('click', async () => {
-      const name = document.getElementById('f-name').value.trim();
-      const port = parseInt(document.getElementById('f-port').value);
-      const target = document.getElementById('f-target').value.trim();
-      const accessRaw = document.getElementById('f-access').value.trim();
-      const access = accessRaw ? accessRaw.split('\n').map(s => s.trim()).filter(Boolean) : [];
-
-      if (!name || !target || !port) {
-        alert('Name, target, and port are required.');
-        return;
-      }
-
-      const r = await fetch('/api/services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, port, target, access }),
-      });
-
-      if (!r.ok) {
-        const e = await r.json();
-        alert('Error: ' + e.error);
-        return;
-      }
-
-      document.getElementById('f-name').value = '';
-      document.getElementById('f-port').value = '';
-      document.getElementById('f-target').value = '';
-      document.getElementById('f-access').value = '';
-      document.getElementById('add-form').style.display = 'none';
-      await load();
-    });
 
     loadStatus();
     load();

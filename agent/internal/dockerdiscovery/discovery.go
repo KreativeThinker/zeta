@@ -1,6 +1,8 @@
-// Package dockerdiscovery turns Docker Compose service labels into
-// zeta mesh services, so a container can declare itself without a matching
-// zetafile entry.
+// Package dockerdiscovery turns Docker Compose service labels into zeta mesh
+// services. Zeta itself no longer routes to containers directly — that's
+// Caddy's job (caddy-docker-proxy, reading the same container labels). This
+// package only extracts what zeta needs for mesh DNS registration and the
+// (future) access-control service.
 //
 // Talks to the Docker Engine API directly over its unix socket via plain
 // net/http+encoding/json — the full docker/docker client SDK pulls in a huge
@@ -9,12 +11,19 @@
 //
 // Label schema (on the container, e.g. via `labels:` in compose.yml):
 //
-//	zeta.service.name    (required) mesh service name
-//	zeta.service.port    (required) container port to proxy to
-//	zeta.service.access  (optional) comma-separated access list, same format
-//	                      as zetafile `access:` entries; defaults to "*"
-//	                      (any enrolled mesh peer) since per-user ACLs are a
-//	                      later phase.
+//	caddy         (required) full hostname Caddy routes this service on,
+//	              e.g. "myservice.shire.mesh" (private/mesh, default) or
+//	              "myservice.example.com" (public, opt-in below). The mesh
+//	              service name registered with zeta is the first label of
+//	              this hostname.
+//	zeta.public   (optional) "true" to bind this site on Caddy's public
+//	              interface instead of its private/mesh-only one. Defaults
+//	              to private. Public services are never registered with
+//	              zeta's mesh DNS — Caddy routes them independently.
+//	zeta.access   (optional) comma-separated access list, same format as
+//	              before; defaults to "*" (any enrolled mesh peer) since
+//	              per-user ACLs are a later phase. Ignored for public
+//	              services.
 package dockerdiscovery
 
 import (
@@ -58,13 +67,8 @@ func New() (*Watcher, error) {
 }
 
 type containerSummary struct {
-	ID              string            `json:"Id"`
-	Labels          map[string]string `json:"Labels"`
-	NetworkSettings struct {
-		Networks map[string]struct {
-			IPAddress string `json:"IPAddress"`
-		} `json:"Networks"`
-	} `json:"NetworkSettings"`
+	ID     string            `json:"Id"`
+	Labels map[string]string `json:"Labels"`
 }
 
 // Discover lists running containers and returns a ZetaService for every one
@@ -95,20 +99,4 @@ func (w *Watcher) Discover(ctx context.Context) ([]config.ZetaService, error) {
 		}
 	}
 	return svcs, nil
-}
-
-func containerIP(c containerSummary) string {
-	for _, n := range c.NetworkSettings.Networks {
-		if n.IPAddress != "" {
-			return n.IPAddress
-		}
-	}
-	return ""
-}
-
-func shortID(id string) string {
-	if len(id) > 12 {
-		return id[:12]
-	}
-	return id
 }

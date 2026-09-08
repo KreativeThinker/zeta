@@ -86,20 +86,20 @@ func main() {
 	resolver, teardownResolver := setupResolver(cfg)
 	defer teardownResolver()
 
-	proxyMgr, err := setupProxy(cfg, st.MeshIP)
+	gateway, err := setupProxy(cfg)
 	if err != nil {
 		slog.Error("setting up proxy", "err", err)
 		os.Exit(1)
 	}
-	defer proxyMgr.Stop()
+	defer gateway.Stop()
 
 	fwMgr := setupFirewall(cfg, zf)
 	defer fwMgr.Flush()
 
-	a := NewAgent(cfg, st, wgMgr, resolver, proxyMgr, fwMgr)
+	a := NewAgent(cfg, st, wgMgr, resolver, gateway, fwMgr)
 	a.SetZetafile(zf)
 
-	agentHandler := agentapi.New(st, resolvedZetafilePath, proxyMgr, a.UpdateZetafile)
+	agentHandler := agentapi.New(st, a.effectiveServices)
 	go func() {
 		slog.Info("agent UI listening", "addr", cfg.HTTP.Addr)
 		if err := http.ListenAndServe(cfg.HTTP.Addr, agentHandler); err != nil {

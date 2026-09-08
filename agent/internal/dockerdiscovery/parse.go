@@ -1,8 +1,6 @@
 package dockerdiscovery
 
 import (
-	"log/slog"
-	"net"
 	"strconv"
 	"strings"
 
@@ -10,29 +8,25 @@ import (
 )
 
 const (
-	labelName   = "zeta.service.name"
-	labelPort   = "zeta.service.port"
-	labelAccess = "zeta.service.access"
+	labelCaddy  = "caddy"
+	labelPublic = "zeta.public"
+	labelAccess = "zeta.access"
 )
 
-// parseContainer extracts a ZetaService from a container's zeta.service.*
-// labels. Returns ok=false if the container doesn't declare a mesh service.
+// parseContainer extracts a ZetaService from a container's `caddy`/`zeta.*`
+// labels. Only private (mesh-only, the default) services are returned —
+// public services (zeta.public: "true") are routed by Caddy straight from
+// its own labels and never need to be known to zeta's mesh DNS.
 func parseContainer(c containerSummary) (config.ZetaService, bool) {
-	name := c.Labels[labelName]
-	portStr := c.Labels[labelPort]
-	if name == "" || portStr == "" {
+	hostname := c.Labels[labelCaddy]
+	if hostname == "" {
 		return config.ZetaService{}, false
 	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		slog.Warn("dockerdiscovery: invalid port label", "container", shortID(c.ID), "port", portStr)
+	if public, _ := strconv.ParseBool(c.Labels[labelPublic]); public {
 		return config.ZetaService{}, false
 	}
-	ip := containerIP(c)
-	if ip == "" {
-		slog.Warn("dockerdiscovery: no network IP for container", "container", shortID(c.ID))
-		return config.ZetaService{}, false
-	}
+
+	name := strings.SplitN(hostname, ".", 2)[0]
 
 	access := []string{"*"}
 	if raw := c.Labels[labelAccess]; raw != "" {
@@ -44,7 +38,6 @@ func parseContainer(c containerSummary) (config.ZetaService, bool) {
 
 	return config.ZetaService{
 		Name:   name,
-		Target: net.JoinHostPort(ip, strconv.Itoa(port)),
 		Access: access,
 	}, true
 }

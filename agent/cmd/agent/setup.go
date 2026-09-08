@@ -59,15 +59,15 @@ func setupResolver(cfg *config.Config) (*dns.Resolver, func()) {
 	}
 }
 
-// setupProxy starts the reverse proxy that enforces per-service ACLs.
-func setupProxy(cfg *config.Config, meshIP string) (*proxy.Manager, error) {
-	proxyMgr := proxy.New()
-	trustedProxies := append(cfg.Proxy.TrustedProxies, meshIP)
-	proxyMgr.SetTrustedProxies(trustedProxies)
-	if err := proxyMgr.Start(cfg.Proxy.Addr); err != nil {
-		return nil, fmt.Errorf("starting proxy: %w", err)
+// setupProxy starts the mesh-facing gateway that forwards to the local
+// Caddy instance (caddy-docker-proxy), which does the actual per-service
+// routing from container labels.
+func setupProxy(cfg *config.Config) (*proxy.Gateway, error) {
+	gateway := proxy.New(cfg.Proxy.CaddyAddr)
+	if err := gateway.Start(cfg.Proxy.Addr); err != nil {
+		return nil, fmt.Errorf("starting proxy gateway: %w", err)
 	}
-	return proxyMgr, nil
+	return gateway, nil
 }
 
 // setupFirewall selects and initializes the firewall backend configured in

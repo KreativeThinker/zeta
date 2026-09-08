@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -17,8 +16,8 @@ type Config struct {
 }
 
 type ProxyConfig struct {
-	Addr           string   `yaml:"addr"`
-	TrustedProxies []string `yaml:"trusted_proxies"`
+	Addr      string `yaml:"addr"`
+	CaddyAddr string `yaml:"caddy_addr"` // local Caddy address for private (mesh-only) sites
 }
 
 type HTTPConfig struct {
@@ -50,7 +49,7 @@ func defaults() *Config {
 		DNS:         DNSConfig{ListenAddr: "127.0.0.1:53", Upstream: "1.1.1.1:53"},
 		State:       StateConfig{Path: "/var/lib/zeta/state.json"},
 		HTTP:        HTTPConfig{Addr: "127.0.0.1:6080"},
-		Proxy:       ProxyConfig{Addr: "0.0.0.0:1080"},
+		Proxy:       ProxyConfig{Addr: "0.0.0.0:1080", CaddyAddr: "127.0.0.1:8888"},
 	}
 }
 
@@ -91,8 +90,8 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("ZETA_PROXY_ADDR"); v != "" {
 		cfg.Proxy.Addr = v
 	}
-	if v := os.Getenv("ZETA_PROXY_TRUSTED"); v != "" {
-		cfg.Proxy.TrustedProxies = strings.Split(v, ",")
+	if v := os.Getenv("ZETA_PROXY_CADDY_ADDR"); v != "" {
+		cfg.Proxy.CaddyAddr = v
 	}
 
 	return cfg, nil

@@ -1,3 +1,10 @@
+// Package proxy runs the mesh-facing gateway: a pure pass-through reverse
+// proxy from zeta's mesh port to the local Caddy instance (caddy-docker-proxy),
+// which does the actual per-service Host-header routing from container
+// labels. Zeta does no routing, ACL, or dialing of its own here — Caddy binds
+// private (mesh-only) sites to a loopback-only port that only this gateway
+// can reach, and public sites directly on the public interface, bypassing
+// this gateway entirely.
 package proxy
 
 import (
@@ -5,84 +12,41 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"strings"
-	"sync"
+	"net/url"
 )
 
-// Manager runs a single HTTP reverse proxy that routes by Host header.
-type Manager struct {
-	mu          sync.RWMutex
-	routes      map[string]*route // service name → route
-	ipToPK      map[string]string
-	ipToHost    map[string]string
-	trustedNets []*net.IPNet
-
+// Gateway forwards every request it receives to the local Caddy instance,
+// Host header untouched, so Caddy's own per-service hostname labels match.
+type Gateway struct {
+	rp     *httputil.ReverseProxy
 	server *http.Server
-
-	eventsMu sync.RWMutex
-	events   []AccessEvent
 }
 
-type route struct {
-	targetAddr string
-	allowAll   bool
-	allowedPKs map[string]struct{}
-	rp         *httputil.ReverseProxy
+// New creates a Gateway that forwards to caddyAddr (host:port).
+func New(caddyAddr string) *Gateway {
+	target := &url.URL{Scheme: "http", Host: caddyAddr}
+	return &Gateway{rp: httputil.NewSingleHostReverseProxy(target)}
 }
 
-// ServiceConfig describes a service this agent should proxy.
-type ServiceConfig struct {
-	Name       string
-	TargetAddr string
-	AllowedPKs []string
+func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	g.rp.ServeHTTP(w, r)
 }
 
-func New() *Manager {
-	return &Manager{
-		routes:   make(map[string]*route),
-		ipToPK:   make(map[string]string),
-		ipToHost: make(map[string]string),
-	}
-}
-
-// SetTrustedProxies configures CIDRs (or single IPs with /32) whose
-// X-Forwarded-For header is trusted to carry the real client IP.
-// Loopback addresses are always trusted regardless of this list.
-// The local mesh IP should be included so that a reverse proxy like Caddy
-// running on the same host is handled correctly.
-func (m *Manager) SetTrustedProxies(cidrs []string) {
-	nets := make([]*net.IPNet, 0, len(cidrs))
-	for _, cidr := range cidrs {
-		if !strings.Contains(cidr, "/") {
-			cidr += "/32"
-		}
-		_, n, err := net.ParseCIDR(cidr)
-		if err != nil {
-			slog.Warn("proxy: ignoring invalid trusted proxy CIDR", "cidr", cidr, "err", err)
-			continue
-		}
-		nets = append(nets, n)
-	}
-	m.mu.Lock()
-	m.trustedNets = nets
-	m.mu.Unlock()
-}
-
-// Start begins listening on addr. Must be called once before Sync has any effect.
-func (m *Manager) Start(addr string) error {
+// Start begins listening on addr.
+func (g *Gateway) Start(addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	m.server = &http.Server{Handler: m}
-	slog.Info("proxy listening", "addr", addr)
-	go m.server.Serve(ln) //nolint:errcheck
+	g.server = &http.Server{Handler: g}
+	slog.Info("proxy gateway listening", "addr", addr)
+	go g.server.Serve(ln) //nolint:errcheck
 	return nil
 }
 
-// Stop shuts down the proxy listener.
-func (m *Manager) Stop() {
-	if m.server != nil {
-		m.server.Close()
+// Stop shuts down the gateway listener.
+func (g *Gateway) Stop() {
+	if g.server != nil {
+		g.server.Close()
 	}
 }

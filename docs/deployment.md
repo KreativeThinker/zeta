@@ -124,83 +124,52 @@ sudo systemctl enable --now zeta-agent
 
 ---
 
-## Caddy as mesh ingress
+## Caddy: the only reverse proxy
 
-If Caddy runs on the same host as an agent, it can serve as the HTTP(S) entry point for mesh services. Since Caddy binds to `0.0.0.0:80/443`, it receives traffic arriving via the WireGuard mesh interface — no extra port forwarding needed.
+`caddy-docker-proxy` (`lucaslorentz/caddy-docker-proxy`) is the sole reverse proxy on each agent host, for both mesh-private and public-facing services. It generates its config entirely from container labels — there's no hand-written Caddyfile to maintain. See the `caddy` service in the root `docker-compose.yml`.
 
-### Caddyfile
+Every service container declares its route via labels. Two classes, split by a real network boundary (which interface Caddy binds the site to), not just a label:
 
-```
-*.shire.mesh {
-    tls internal
-    reverse_proxy host.docker.internal:1080
-}
-```
-
-- `tls internal` — Caddy's built-in CA issues a self-signed cert. No public DNS required.
-- `host.docker.internal` — resolves to the Docker host from inside the Caddy container.
-
-### Caddy Docker service additions
+### Private (default, mesh-only)
 
 ```yaml
-extra_hosts:
-  - "host.docker.internal:host-gateway"
+labels:
+  caddy: files.shire.mesh
+  caddy.reverse_proxy: "{{upstreams 9010}}"
+  caddy.bind: 127.0.0.1
+  zeta.access: user:graveyard,user:laptop
 ```
 
-### Trusting the Caddy CA
+`caddy.bind: 127.0.0.1` restricts this site to `127.0.0.1:8888` — reachable only through the zeta agent's gateway on `1080`, which is itself only meant to be reached over the WireGuard mesh interface (keep the host firewall — `docs/agent.md` — closed on 1080 for anything but that).
 
-`tls internal` generates a self-signed cert signed by Caddy's local CA. Export and install the root on each client device:
+### Public (opt-in)
 
-```bash
-# Copy cert out of container
-docker cp caddy:/data/caddy/pki/authorities/local/root.crt caddy-mesh-ca.crt
-
-# Linux (system-wide, covers Chrome/Chromium)
-sudo cp caddy-mesh-ca.crt /usr/local/share/ca-certificates/
-sudo update-ca-certificates
-
-# Firefox (maintains its own trust store)
-# Settings → Privacy & Security → Certificates → View Certificates → Import
+```yaml
+labels:
+  caddy: zeta.example.com
+  caddy.reverse_proxy: "{{upstreams 8080}}"
+  zeta.public: "true"
 ```
 
-After importing, `https://files.shire.mesh` loads without browser warnings.
+No `caddy.bind` — Caddy binds this to `0.0.0.0:443`/`:80` with automatic HTTPS, exactly like exposing the controller used to require a hand-written Caddyfile for. Internet clients hit Caddy directly; the zeta agent gateway is never involved. For a public gRPC service, use Caddy's `grpc` reverse proxy support instead of an HTTP `reverse_proxy` label.
 
-### How the proxy chain works
+### How the private-path proxy chain works
 
 ```
 Browser (graveyard)
-  │  DNS: files.shire.mesh → 100.64.0.2
-  │  HTTPS to 100.64.0.2:443
+  │  DNS: files.shire.mesh → 100.64.0.2  (shire's mesh IP)
+  │  HTTP to 100.64.0.2:1080
   ▼
 WireGuard tunnel (encrypted)
   ▼
-shire host — Docker iptables DNAT → Caddy container :443
-  │  TLS termination
-  │  X-Forwarded-For: 100.64.0.3  (graveyard's mesh IP)
-  │  reverse_proxy → host.docker.internal:1080
+shire zeta agent gateway :1080
+  │  pure pass-through, Host header unmodified
   ▼
-Zeta agent proxy :1080
-  │  Host: files.shire.mesh → service "files"
-  │  ACL: graveyard's pubkey ∈ allowedPKs["files"]?
+shire Caddy :127.0.0.1:8888
+  │  caddy label match: files.shire.mesh
   ▼
 Backend: 127.0.0.1:9010
 ```
-
----
-
-## Exposing the controller securely
-
-The controller's gRPC port (`:50051`) and REST/UI port (`:8080`) should not be exposed to the internet without TLS. Options:
-
-### Caddy in front of the controller
-
-```
-zeta.example.com {
-    reverse_proxy localhost:8080
-}
-```
-
-For the gRPC port, use Caddy's `grpc` reverse proxy or an nginx stream block.
 
 ### Firewall rules
 
