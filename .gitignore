@@ -46,5 +46,6 @@ android/app/build/
 android/build/
 *.apk
 *.aab
+*.keystore
 /claude-reference
 zetafile.yml
