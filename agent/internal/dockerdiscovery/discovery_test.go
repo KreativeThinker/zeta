@@ -42,6 +42,18 @@ func TestParseContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("scheme prefix stripped before taking the name", func(t *testing.T) {
+		svc, ok := parseContainer(mkContainer(map[string]string{
+			labelCaddy: "http://firefly.shire.mesh:8888",
+		}))
+		if !ok {
+			t.Fatal("expected service to be discovered")
+		}
+		if svc.Name != "firefly" {
+			t.Fatalf("expected name %q, got %q (scheme prefix leaked into the DNS name)", "firefly", svc.Name)
+		}
+	})
+
 	t.Run("public service is not registered", func(t *testing.T) {
 		if _, ok := parseContainer(mkContainer(map[string]string{
 			labelCaddy:  "firefly-importer.anumeya.com",

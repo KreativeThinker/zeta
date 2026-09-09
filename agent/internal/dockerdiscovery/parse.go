@@ -25,6 +25,9 @@ func parseContainer(c containerSummary) (config.ZetaService, bool) {
 	if public, _ := strconv.ParseBool(c.Labels[labelPublic]); public {
 		return config.ZetaService{}, false
 	}
+	if idx := strings.Index(hostname, "://"); idx != -1 {
+		hostname = hostname[idx+len("://"):]
+	}
 
 	name := strings.SplitN(hostname, ".", 2)[0]
 
