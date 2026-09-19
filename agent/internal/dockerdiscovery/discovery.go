@@ -94,9 +94,7 @@ func (w *Watcher) Discover(ctx context.Context) ([]config.ZetaService, error) {
 
 	var svcs []config.ZetaService
 	for _, c := range containers {
-		if svc, ok := parseContainer(c); ok {
-			svcs = append(svcs, svc)
-		}
+		svcs = append(svcs, parseContainer(c)...)
 	}
 	return svcs, nil
 }

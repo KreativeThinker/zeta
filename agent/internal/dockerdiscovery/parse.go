@@ -13,23 +13,10 @@ const (
 	labelAccess = "zeta.access"
 )
 
-// parseContainer extracts a ZetaService from a container's `caddy`/`zeta.*`
-// labels. Only private (mesh-only, the default) services are returned —
-// public services (zeta.public: "true") are routed by Caddy straight from
-// its own labels and never need to be known to zeta's mesh DNS.
-func parseContainer(c containerSummary) (config.ZetaService, bool) {
-	hostname := c.Labels[labelCaddy]
-	if hostname == "" {
-		return config.ZetaService{}, false
-	}
+func parseContainer(c containerSummary) []config.ZetaService {
 	if public, _ := strconv.ParseBool(c.Labels[labelPublic]); public {
-		return config.ZetaService{}, false
+		return nil
 	}
-	if idx := strings.Index(hostname, "://"); idx != -1 {
-		hostname = hostname[idx+len("://"):]
-	}
-
-	name := strings.SplitN(hostname, ".", 2)[0]
 
 	access := []string{"*"}
 	if raw := c.Labels[labelAccess]; raw != "" {
@@ -39,8 +26,20 @@ func parseContainer(c containerSummary) (config.ZetaService, bool) {
 		}
 	}
 
-	return config.ZetaService{
-		Name:   name,
-		Access: access,
-	}, true
+	var svcs []config.ZetaService
+	for key, hostname := range c.Labels {
+		if key != labelCaddy && !isIndexedCaddyLabel(key) {
+			continue
+		}
+		if idx := strings.Index(hostname, "://"); idx != -1 {
+			hostname = hostname[idx+len("://"):]
+		}
+		name := strings.SplitN(hostname, ".", 2)[0]
+		svcs = append(svcs, config.ZetaService{Name: name, Access: access})
+	}
+	return svcs
+}
+
+func isIndexedCaddyLabel(key string) bool {
+	return strings.HasPrefix(key, labelCaddy+"_") && !strings.Contains(key, ".")
 }

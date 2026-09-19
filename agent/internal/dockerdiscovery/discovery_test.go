@@ -8,58 +8,75 @@ func TestParseContainer(t *testing.T) {
 	}
 
 	t.Run("no caddy label", func(t *testing.T) {
-		if _, ok := parseContainer(mkContainer(nil)); ok {
-			t.Fatal("expected no service for a container without a caddy label")
+		if svcs := parseContainer(mkContainer(nil)); len(svcs) != 0 {
+			t.Fatalf("expected no service for a container without a caddy label, got %+v", svcs)
 		}
 	})
 
 	t.Run("private service registered, name from first hostname label", func(t *testing.T) {
-		svc, ok := parseContainer(mkContainer(map[string]string{
+		svcs := parseContainer(mkContainer(map[string]string{
 			labelCaddy: "web.shire.mesh",
 		}))
-		if !ok {
-			t.Fatal("expected service to be discovered")
+		if len(svcs) != 1 {
+			t.Fatalf("expected 1 service, got %+v", svcs)
 		}
-		if svc.Name != "web" {
-			t.Fatalf("unexpected service name: %+v", svc)
+		if svcs[0].Name != "web" {
+			t.Fatalf("unexpected service name: %+v", svcs[0])
 		}
-		if len(svc.Access) != 1 || svc.Access[0] != "*" {
-			t.Fatalf("expected default access [*], got %v", svc.Access)
+		if len(svcs[0].Access) != 1 || svcs[0].Access[0] != "*" {
+			t.Fatalf("expected default access [*], got %v", svcs[0].Access)
 		}
 	})
 
 	t.Run("explicit access overrides default", func(t *testing.T) {
-		svc, ok := parseContainer(mkContainer(map[string]string{
+		svcs := parseContainer(mkContainer(map[string]string{
 			labelCaddy:  "web.shire.mesh",
 			labelAccess: "user:shire, user:bree",
 		}))
-		if !ok {
-			t.Fatal("expected service to be discovered")
+		if len(svcs) != 1 {
+			t.Fatalf("expected 1 service, got %+v", svcs)
 		}
 		want := []string{"user:shire", "user:bree"}
-		if len(svc.Access) != len(want) || svc.Access[0] != want[0] || svc.Access[1] != want[1] {
-			t.Fatalf("unexpected access list: %v", svc.Access)
+		if len(svcs[0].Access) != len(want) || svcs[0].Access[0] != want[0] || svcs[0].Access[1] != want[1] {
+			t.Fatalf("unexpected access list: %v", svcs[0].Access)
 		}
 	})
 
 	t.Run("scheme prefix stripped before taking the name", func(t *testing.T) {
-		svc, ok := parseContainer(mkContainer(map[string]string{
+		svcs := parseContainer(mkContainer(map[string]string{
 			labelCaddy: "http://firefly.shire.mesh:8888",
 		}))
-		if !ok {
-			t.Fatal("expected service to be discovered")
+		if len(svcs) != 1 {
+			t.Fatalf("expected 1 service, got %+v", svcs)
 		}
-		if svc.Name != "firefly" {
-			t.Fatalf("expected name %q, got %q (scheme prefix leaked into the DNS name)", "firefly", svc.Name)
+		if svcs[0].Name != "firefly" {
+			t.Fatalf("expected name %q, got %q (scheme prefix leaked into the DNS name)", "firefly", svcs[0].Name)
 		}
 	})
 
 	t.Run("public service is not registered", func(t *testing.T) {
-		if _, ok := parseContainer(mkContainer(map[string]string{
+		svcs := parseContainer(mkContainer(map[string]string{
 			labelCaddy:  "firefly-importer.anumeya.com",
 			labelPublic: "true",
-		})); ok {
-			t.Fatal("expected public services to be skipped — Caddy routes them directly")
+		}))
+		if len(svcs) != 0 {
+			t.Fatalf("expected public services to be skipped — Caddy routes them directly, got %+v", svcs)
+		}
+	})
+
+	t.Run("indexed caddy labels register one service per hostname", func(t *testing.T) {
+		svcs := parseContainer(mkContainer(map[string]string{
+			"caddy_0":               "http://minio-api.shire.mesh:8888",
+			"caddy_0.reverse_proxy": "{{upstreams 9000}}",
+			"caddy_1":               "http://minio.shire.mesh:8888",
+			"caddy_1.reverse_proxy": "{{upstreams 9001}}",
+		}))
+		if len(svcs) != 2 {
+			t.Fatalf("expected 2 services, got %+v", svcs)
+		}
+		names := map[string]bool{svcs[0].Name: true, svcs[1].Name: true}
+		if !names["minio-api"] || !names["minio"] {
+			t.Fatalf("expected minio-api and minio, got %+v", svcs)
 		}
 	})
 }
