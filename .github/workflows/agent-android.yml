@@ -3,6 +3,7 @@ name: Agent (Android)
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   release:
@@ -21,6 +22,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Decode release keystore
         working-directory: android
@@ -36,6 +39,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Attach APK to release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: android/app/build/outputs/apk/release/*.apk
