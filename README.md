@@ -45,9 +45,9 @@ Admin UI: `http://localhost:8080`
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — control plane vs data plane, enrollment flow, service announcement, DNS, proxy, Android client internals
+- [Architecture](docs/architecture.md) — control plane vs data plane, enrollment flow, service announcement, DNS, Caddy integration, Android client internals
 - [Controller](docs/controller.md) — configuration, REST API reference, database schema
-- [Agent](docs/agent.md) — configuration, zetafile service definitions, proxy, management API
+- [Agent](docs/agent.md) — configuration, zetafile service definitions, Caddy integration, management API
 - [Security](docs/security.md) — threat model, ACL enforcement, revocation, limitations
 - [Deployment](docs/deployment.md) — Docker Compose, systemd, Caddy integration, production checklist
 - [Development](docs/development.md) — environment setup, build commands, workflow for all components
@@ -66,7 +66,6 @@ zeta/
 │       ├── control/  gRPC client + Sync stream
 │       ├── dns/      In-process *.mesh DNS server
 │       ├── nat/      STUN endpoint discovery (IPv4)
-│       ├── proxy/    HTTP reverse proxy (Host-header routing + ACL)
 │       ├── route/    netlink mesh route management
 │       ├── state/    WG keypair + cert persistence
 │       └── wg/       WireGuard interface management

@@ -77,13 +77,13 @@ Runs as a single binary (`zeta-agent`) on each device. Requires root (or `CAP_NE
 - **WireGuard manager** — creates and configures the `zeta0` interface; applies peer configs from NetworkMap updates.
 - **STUN client** — discovers the device's external IP:port via `stun.l.google.com:19302` using IPv4. Reports the result to the controller every 30 seconds.
 - **DNS resolver** — in-process DNS server (default `127.0.0.1:53`) that answers `A` queries for `*.mesh` names. Mesh hostnames resolve to peer mesh IPs. Service names (`service.hostname.mesh`) also resolve to the host's mesh IP.
-- **Proxy gateway** — single-port pass-through (default `0.0.0.0:1080`) that forwards every request, `Host` header unmodified, to a local Caddy instance (`lucaslorentz/caddy-docker-proxy`). Caddy is the only actual reverse proxy — it reads container labels off the Docker socket directly and does all HTTP routing, for both public and private services. See [agent.md](agent.md#proxy-gateway).
+- **Docker label shim** — read-only Docker API socket for `lucaslorentz/caddy-docker-proxy`. Caddy is the only reverse proxy and does all HTTP routing; the shim passes container labels through, adding a mesh-only guard to containers labelled `zeta.private_network`. See [agent.md](agent.md#caddy-integration).
 - **gRPC sync client** — maintains the persistent `Sync` stream to the controller with exponential backoff reconnection.
 - **Management UI** — lightweight, read-only HTTP API (default `127.0.0.1:6080`) for viewing status and currently discovered services.
 
 ### zetafile
 
-A YAML file on each agent (`zetafile.yml`) declaring firewall rules. Services are no longer declared here — they're discovered from Docker container `caddy`/`zeta.*` labels. See [agent.md](agent.md#proxy-gateway).
+A YAML file on each agent (`zetafile.yml`) declaring firewall rules. Services are no longer declared here — they're discovered from Docker container `caddy`/`zeta.*` labels. See [agent.md](agent.md#caddy-integration).
 
 ---
 
@@ -176,13 +176,13 @@ Only `A` (IPv4) records are served. `AAAA` queries fall through to upstream.
 
 ---
 
-## Proxy gateway
+## Caddy integration
 
-The agent's proxy listens on a single TCP port (default `0.0.0.0:1080`) and is a pure pass-through: every request is forwarded, `Host` header unmodified, to a local Caddy instance (`lucaslorentz/caddy-docker-proxy`, default `127.0.0.1:8888`). Caddy does the actual per-service routing, matching the request's `Host` header against each container's `caddy` label.
+Caddy (`lucaslorentz/caddy-docker-proxy`) listens on the usual `:80`/`:443` and routes by `Host` against each container's `caddy` label. There is no agent-side proxy hop.
 
-Public services (`zeta.public: "true"` container label) bypass this gateway entirely — Caddy binds them straight to `0.0.0.0:443`/`:80` with automatic HTTPS.
+Services labelled `zeta.private_network: "true"` are mesh-only: the agent's Docker label shim serves them over plain http and adds a guard that aborts any connection whose source is outside the mesh CIDR. Unlabelled services are public and untouched.
 
-No ACL is enforced in this path today — see the note in [agent.md](agent.md#acl-enforcement--not-yet-wired-up).
+No per-peer ACL is enforced in this path today — see the note in [agent.md](agent.md#acl-enforcement--not-yet-wired-up).
 
 ---
 
@@ -199,15 +199,12 @@ No ACL is enforced in this path today — see the note in [agent.md](agent.md#ac
       │  encrypt, send to shire's STUN endpoint
       ▼
 [shire WireGuard: zeta0]
-      │  decrypt, deliver to 100.64.0.3:1080
+      │  decrypt, deliver to 100.64.0.3:80
       ▼
-[shire proxy gateway: 0.0.0.0:1080]
-      │  Host: files.shire.mesh  (passed through unmodified)
+[shire Caddy: :80]
+      │  source in mesh CIDR; Host: files.shire.mesh matches the caddy label
       ▼
-[shire Caddy: 127.0.0.1:8888]
-      │  caddy label match: files.shire.mesh
-      ▼
-[shire backend: 127.0.0.1:9010]
+[shire backend container]
 ```
 
 ---

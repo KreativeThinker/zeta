@@ -9,7 +9,6 @@ import (
 	"github.com/kreativethinker/zeta/agent/internal/dns"
 	"github.com/kreativethinker/zeta/agent/internal/dockerdiscovery"
 	"github.com/kreativethinker/zeta/agent/internal/firewall"
-	"github.com/kreativethinker/zeta/agent/internal/proxy"
 	"github.com/kreativethinker/zeta/agent/internal/route"
 	"github.com/kreativethinker/zeta/agent/internal/state"
 	"github.com/kreativethinker/zeta/agent/internal/wg"
@@ -28,10 +27,10 @@ func setupWireGuard(cfg *config.Config, st *state.State) (*wg.Manager, error) {
 	if err := wgMgr.Configure(st.WGPrivateKey, cfg.WireGuard.ListenPort); err != nil {
 		return nil, fmt.Errorf("configuring WireGuard: %w", err)
 	}
-	if err := wgMgr.AssignAddress(st.MeshIP, "100.64.0.0/10"); err != nil {
+	if err := wgMgr.AssignAddress(st.MeshIP, config.MeshCIDR); err != nil {
 		return nil, fmt.Errorf("assigning mesh address: %w", err)
 	}
-	if err := route.AddMeshRoute("100.64.0.0/10", cfg.WireGuard.Interface); err != nil {
+	if err := route.AddMeshRoute(config.MeshCIDR, cfg.WireGuard.Interface); err != nil {
 		slog.Warn("adding mesh route", "err", err)
 	}
 	return wgMgr, nil
@@ -59,17 +58,6 @@ func setupResolver(cfg *config.Config) (*dns.Resolver, func()) {
 	}
 }
 
-// setupProxy starts the mesh-facing gateway that forwards to the local
-// Caddy instance (caddy-docker-proxy), which does the actual per-service
-// routing from container labels.
-func setupProxy(cfg *config.Config) (*proxy.Gateway, error) {
-	gateway := proxy.New(cfg.Proxy.CaddyAddr)
-	if err := gateway.Start(cfg.Proxy.Addr); err != nil {
-		return nil, fmt.Errorf("starting proxy gateway: %w", err)
-	}
-	return gateway, nil
-}
-
 // setupFirewall selects and initializes the firewall backend configured in
 // the zetafile (auto-detected if unset).
 func setupFirewall(cfg *config.Config, zf *config.Zetafile) *firewall.Manager {
@@ -79,7 +67,7 @@ func setupFirewall(cfg *config.Config, zf *config.Zetafile) *firewall.Manager {
 // setupDockerDiscovery starts Docker Compose label service discovery in the
 // background, if a Docker daemon is reachable. Non-fatal if not — most
 // agents don't run on a Docker host.
-func setupDockerDiscovery(ctx context.Context, a *Agent) {
+func setupDockerDiscovery(ctx context.Context, a *Agent, cfg *config.Config) {
 	dw, err := dockerdiscovery.New()
 	if err != nil {
 		slog.Info("docker discovery unavailable, skipping", "err", err)
@@ -91,4 +79,7 @@ func setupDockerDiscovery(ctx context.Context, a *Agent) {
 		a.UpdateDockerServices(svcs)
 	}
 	go dw.Watch(ctx, a.UpdateDockerServices)
+	if err := dw.ServeShim(ctx, cfg.DockerProxy.Socket, config.MeshCIDR); err != nil {
+		slog.Warn("docker label shim unavailable", "err", err)
+	}
 }

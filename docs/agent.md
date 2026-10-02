@@ -55,8 +55,8 @@ state:
 http:
   addr: "127.0.0.1:6080"   # agent management UI
 
-proxy:
-  addr: "0.0.0.0:1080"     # mesh service proxy
+docker_proxy:
+  socket: /var/run/zeta/docker.sock   # label-rewriting docker socket for caddy
 ```
 
 ### Environment variables
@@ -69,7 +69,7 @@ proxy:
 | `ZETA_DNS_LISTEN` | `127.0.0.1:53` | DNS listen address |
 | `ZETA_DNS_UPSTREAM` | `1.1.1.1:53` | Upstream DNS for non-mesh queries |
 | `ZETA_HTTP_ADDR` | `127.0.0.1:6080` | Agent management UI |
-| `ZETA_PROXY_ADDR` | `0.0.0.0:1080` | Mesh service proxy |
+| `ZETA_DOCKER_PROXY_SOCKET` | `/var/run/zeta/docker.sock` | Docker socket served to caddy-docker-proxy |
 
 ---
 
@@ -138,39 +138,34 @@ The DNS records are rebuilt on every NetworkMap push. Only `A` records are serve
 
 ---
 
-## Proxy gateway
+## Caddy integration
 
 Caddy (`lucaslorentz/caddy-docker-proxy`) is the only reverse proxy — it reads
-container labels directly off the Docker socket and does all HTTP routing,
-for both public and private services. The agent's own proxy is now a thin
-pass-through in front of it: it listens on a single TCP port (default
-`0.0.0.0:1080`) and forwards every request, `Host` header untouched, to
-Caddy's private-only bind (default `127.0.0.1:8888`).
+container labels and does all HTTP routing, for both public and private
+services, on its normal `:80`/`:443`. The agent is not in the request path.
 
 ### Public vs private
-
-Each service container carries a `caddy` label with its full hostname, plus
-an optional `zeta.public` flag:
 
 ```yaml
 labels:
   caddy: files.shire.mesh
   caddy.reverse_proxy: "{{upstreams 9010}}"
-  zeta.access: user:graveyard,user:laptop
+  zeta.private_network: "true"
 ```
 
-- **Private (default)** — no `zeta.public` label. Caddy binds this site to
-  `127.0.0.1:8888` only, reachable exclusively through the agent's gateway on
-  1080. This is the same boundary the old proxy enforced — 1080 is the real
-  entry point, and the host firewall (`agent/internal/firewall`, opt-in) is
-  what keeps it off the public interface.
-- **Public** (`zeta.public: "true"`) — Caddy binds this site to
-  `0.0.0.0:443`/`:80` with automatic HTTPS. Internet clients hit Caddy
-  directly; the agent's gateway is never involved.
+- **Private** (`zeta.private_network: "true"`) — mesh-only. Caddy is pointed at
+  the agent's read-only Docker socket (`DOCKER_HOST`), which rewrites this
+  container's labels: the site is served over plain http (no public CA can
+  issue `.mesh`) and a guard aborts any connection whose source IP is outside
+  the mesh CIDR. WireGuard makes the source IP unspoofable. No ports, IPs or
+  loopback binds in compose.
+- **Public** (no flag) — labels pass through untouched; Caddy serves the
+  site with automatic HTTPS. Never registered with mesh DNS.
 
-Only private services are registered with zeta's mesh DNS (the service name
-is the first label of the `caddy` hostname). Public services use their real
-domain and Caddy's own ACME — zeta doesn't need to know about them at all.
+Private hostnames are `<service>.<host>.mesh`. The service name registered
+with zeta (and answered by mesh DNS) is the first label of the `caddy` value.
+If the host firewall is enabled, the agent opens port 80 on the mesh
+interface.
 
 ### ACL enforcement — not yet wired up
 
@@ -199,9 +194,8 @@ configuration now — see [architecture.md](architecture.md) for its format.
       files    .    shire       .mesh
 ```
 
-Resolves to the agent's mesh IP. Caddy reads the `Host` header (forwarded
-unmodified by the agent's gateway) to determine which service to route the
-request to.
+Resolves to the agent's mesh IP. Caddy reads the `Host` header to determine
+which service to route the request to.
 
 ### Access syntax
 
@@ -298,6 +292,6 @@ dig @127.0.0.1 files.shire.mesh
 # Ping a peer
 ping 100.64.0.3
 
-# Access a service directly (bypasses Caddy)
-curl -H "Host: files.shire.mesh" http://100.64.0.3:1080/
+# Access a private service
+curl http://files.shire.mesh/
 ```

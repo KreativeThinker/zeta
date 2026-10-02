@@ -130,45 +130,40 @@ sudo systemctl enable --now zeta-agent
 
 Every service container declares its route via labels. Two classes, split by a real network boundary (which interface Caddy binds the site to), not just a label:
 
-### Private (default, mesh-only)
+### Private (mesh-only)
 
 ```yaml
 labels:
   caddy: files.shire.mesh
   caddy.reverse_proxy: "{{upstreams 9010}}"
-  caddy.bind: 127.0.0.1
-  zeta.access: user:graveyard,user:laptop
+  zeta.private_network: "true"
 ```
 
-`caddy.bind: 127.0.0.1` restricts this site to `127.0.0.1:8888` — reachable only through the zeta agent's gateway on `1080`, which is itself only meant to be reached over the WireGuard mesh interface (keep the host firewall — `docs/agent.md` — closed on 1080 for anything but that).
+No `ports:`, no IPs. Caddy reads containers through the agent's read-only Docker socket (shared via the `zeta-run` volume and `DOCKER_HOST` in `docker-compose.yml`), which serves the site over plain http on `:80` and aborts any connection from outside the mesh CIDR. Clients use `http://files.shire.mesh` with no port.
 
-### Public (opt-in)
+### Public (default)
 
 ```yaml
 labels:
   caddy: zeta.example.com
   caddy.reverse_proxy: "{{upstreams 8080}}"
-  zeta.public: "true"
 ```
 
-No `caddy.bind` — Caddy binds this to `0.0.0.0:443`/`:80` with automatic HTTPS, exactly like exposing the controller used to require a hand-written Caddyfile for. Internet clients hit Caddy directly; the zeta agent gateway is never involved. For a public gRPC service, use Caddy's `grpc` reverse proxy support instead of an HTTP `reverse_proxy` label.
+No flag — Caddy serves this on `:443`/`:80` with automatic HTTPS. The zeta agent is not involved. For a public gRPC service, use Caddy's `grpc` reverse proxy support instead of an HTTP `reverse_proxy` label.
 
-### How the private-path proxy chain works
+### Private request path
 
 ```
 Browser (graveyard)
   │  DNS: files.shire.mesh → 100.64.0.2  (shire's mesh IP)
-  │  HTTP to 100.64.0.2:1080
+  │  HTTP to 100.64.0.2:80
   ▼
 WireGuard tunnel (encrypted)
   ▼
-shire zeta agent gateway :1080
-  │  pure pass-through, Host header unmodified
+shire Caddy :80
+  │  source in mesh CIDR, caddy label match: files.shire.mesh
   ▼
-shire Caddy :127.0.0.1:8888
-  │  caddy label match: files.shire.mesh
-  ▼
-Backend: 127.0.0.1:9010
+Backend container
 ```
 
 ### Firewall rules

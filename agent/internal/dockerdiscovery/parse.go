@@ -1,20 +1,19 @@
 package dockerdiscovery
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/kreativethinker/zeta/agent/internal/config"
 )
 
 const (
-	labelCaddy  = "caddy"
-	labelPublic = "zeta.public"
-	labelAccess = "zeta.access"
+	labelCaddy   = "caddy"
+	labelPrivate = "zeta.private_network"
+	labelAccess  = "zeta.access"
 )
 
 func parseContainer(c containerSummary) []config.ZetaService {
-	if public, _ := strconv.ParseBool(c.Labels[labelPublic]); public {
+	if !isPrivate(c.Labels) {
 		return nil
 	}
 

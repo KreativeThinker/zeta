@@ -15,7 +15,7 @@ func TestParseContainer(t *testing.T) {
 
 	t.Run("private service registered, name from first hostname label", func(t *testing.T) {
 		svcs := parseContainer(mkContainer(map[string]string{
-			labelCaddy: "web.shire.mesh",
+			labelCaddy: "web.shire.mesh", labelPrivate: "true",
 		}))
 		if len(svcs) != 1 {
 			t.Fatalf("expected 1 service, got %+v", svcs)
@@ -30,8 +30,9 @@ func TestParseContainer(t *testing.T) {
 
 	t.Run("explicit access overrides default", func(t *testing.T) {
 		svcs := parseContainer(mkContainer(map[string]string{
-			labelCaddy:  "web.shire.mesh",
-			labelAccess: "user:shire, user:bree",
+			labelCaddy:   "web.shire.mesh",
+			labelPrivate: "true",
+			labelAccess:  "user:shire, user:bree",
 		}))
 		if len(svcs) != 1 {
 			t.Fatalf("expected 1 service, got %+v", svcs)
@@ -44,7 +45,7 @@ func TestParseContainer(t *testing.T) {
 
 	t.Run("scheme prefix stripped before taking the name", func(t *testing.T) {
 		svcs := parseContainer(mkContainer(map[string]string{
-			labelCaddy: "http://firefly.shire.mesh:8888",
+			labelCaddy: "http://firefly.shire.mesh:8888", labelPrivate: "true",
 		}))
 		if len(svcs) != 1 {
 			t.Fatalf("expected 1 service, got %+v", svcs)
@@ -54,10 +55,9 @@ func TestParseContainer(t *testing.T) {
 		}
 	})
 
-	t.Run("public service is not registered", func(t *testing.T) {
+	t.Run("unflagged (public) service is not registered", func(t *testing.T) {
 		svcs := parseContainer(mkContainer(map[string]string{
-			labelCaddy:  "firefly-importer.anumeya.com",
-			labelPublic: "true",
+			labelCaddy: "firefly-importer.anumeya.com",
 		}))
 		if len(svcs) != 0 {
 			t.Fatalf("expected public services to be skipped — Caddy routes them directly, got %+v", svcs)
@@ -66,6 +66,7 @@ func TestParseContainer(t *testing.T) {
 
 	t.Run("indexed caddy labels register one service per hostname", func(t *testing.T) {
 		svcs := parseContainer(mkContainer(map[string]string{
+			labelPrivate:            "true",
 			"caddy_0":               "http://minio-api.shire.mesh:8888",
 			"caddy_0.reverse_proxy": "{{upstreams 9000}}",
 			"caddy_1":               "http://minio.shire.mesh:8888",

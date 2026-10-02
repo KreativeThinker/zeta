@@ -12,12 +12,13 @@ type Config struct {
 	DNS         DNSConfig         `yaml:"dns"`
 	State       StateConfig       `yaml:"state"`
 	HTTP        HTTPConfig        `yaml:"http"`
-	Proxy       ProxyConfig       `yaml:"proxy"`
+	DockerProxy DockerProxyConfig `yaml:"docker_proxy"`
 }
 
-type ProxyConfig struct {
-	Addr      string `yaml:"addr"`
-	CaddyAddr string `yaml:"caddy_addr"` // local Caddy address for private (mesh-only) sites
+const MeshCIDR = "100.64.0.0/10"
+
+type DockerProxyConfig struct {
+	Socket string `yaml:"socket"` // unix socket caddy-docker-proxy reads labels from
 }
 
 type HTTPConfig struct {
@@ -49,7 +50,7 @@ func defaults() *Config {
 		DNS:         DNSConfig{ListenAddr: "127.0.0.1:53", Upstream: "1.1.1.1:53"},
 		State:       StateConfig{Path: "/var/lib/zeta/state.json"},
 		HTTP:        HTTPConfig{Addr: "127.0.0.1:6080"},
-		Proxy:       ProxyConfig{Addr: "0.0.0.0:1080", CaddyAddr: "127.0.0.1:8888"},
+		DockerProxy: DockerProxyConfig{Socket: "/var/run/zeta/docker.sock"},
 	}
 }
 
@@ -87,11 +88,8 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("ZETA_HTTP_ADDR"); v != "" {
 		cfg.HTTP.Addr = v
 	}
-	if v := os.Getenv("ZETA_PROXY_ADDR"); v != "" {
-		cfg.Proxy.Addr = v
-	}
-	if v := os.Getenv("ZETA_PROXY_CADDY_ADDR"); v != "" {
-		cfg.Proxy.CaddyAddr = v
+	if v := os.Getenv("ZETA_DOCKER_PROXY_SOCKET"); v != "" {
+		cfg.DockerProxy.Socket = v
 	}
 
 	return cfg, nil

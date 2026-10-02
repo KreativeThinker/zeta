@@ -86,17 +86,10 @@ func main() {
 	resolver, teardownResolver := setupResolver(cfg)
 	defer teardownResolver()
 
-	gateway, err := setupProxy(cfg)
-	if err != nil {
-		slog.Error("setting up proxy", "err", err)
-		os.Exit(1)
-	}
-	defer gateway.Stop()
-
 	fwMgr := setupFirewall(cfg, zf)
 	defer fwMgr.Flush()
 
-	a := NewAgent(cfg, st, wgMgr, resolver, gateway, fwMgr)
+	a := NewAgent(cfg, st, wgMgr, resolver, fwMgr)
 	a.SetZetafile(zf)
 
 	agentHandler := agentapi.New(st, a.effectiveServices)
@@ -110,7 +103,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	setupDockerDiscovery(ctx, a)
+	setupDockerDiscovery(ctx, a, cfg)
 
 	if err := config.WatchZetafile(ctx, resolvedZetafilePath, a.UpdateZetafile); err != nil {
 		slog.Warn("zetafile hot-reload unavailable", "err", err)
@@ -125,7 +118,7 @@ func main() {
 	if err := wgMgr.ApplyPeers(nil); err != nil {
 		slog.Warn("clearing WireGuard peers on exit", "err", err)
 	}
-	if err := route.RemoveMeshRoute("100.64.0.0/10", cfg.WireGuard.Interface); err != nil {
+	if err := route.RemoveMeshRoute(config.MeshCIDR, cfg.WireGuard.Interface); err != nil {
 		slog.Warn("removing mesh route on exit", "err", err)
 	}
 }

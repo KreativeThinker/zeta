@@ -14,7 +14,7 @@ type ufwBackend struct {
 	rules []string // rule specs added by us, tracked for cleanup
 }
 
-func (u *ufwBackend) apply(serviceRules, extraRules []Rule, proxyPort int) error {
+func (u *ufwBackend) apply(serviceRules, extraRules []Rule, webPort int) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
@@ -34,7 +34,7 @@ func (u *ufwBackend) apply(serviceRules, extraRules []Rule, proxyPort int) error
 				continue
 			}
 			seen[ip] = true
-			next = append(next, fmt.Sprintf("in on %s from %s to any port %d proto tcp", u.iface, ip, proxyPort))
+			next = append(next, fmt.Sprintf("in on %s from %s to any port %d proto tcp", u.iface, ip, webPort))
 		}
 	}
 

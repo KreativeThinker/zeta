@@ -33,6 +33,7 @@ services:
     volumes:
       - agent-data:/var/lib/zeta
       - /var/run/docker.sock:/var/run/docker.sock:ro  # for caddy/zeta.* label discovery
+      - zeta-run:/var/run/zeta                        # serves the label-rewriting docker socket for caddy
     environment:
       ZETA_COORDINATOR: "localhost:50051"
     command:
@@ -41,16 +42,23 @@ services:
 
   # Sole reverse proxy for this host, for both public and private services —
   # config is generated entirely from container labels (see docs/deployment.md).
-  # network_mode: host so it shares the mesh interface visibility with agent.
+  # network_mode: host so it sees the mesh interface. It reads containers via
+  # the agent's read-only docker socket, which adds the mesh-only guard to
+  # services labelled zeta.private_network.
   caddy:
     image: lucaslorentz/caddy-docker-proxy:2.9-alpine
     restart: unless-stopped
     network_mode: host
+    depends_on:
+      - agent
+    environment:
+      DOCKER_HOST: unix:///var/run/zeta/docker.sock
     volumes:
       - caddy-data:/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - zeta-run:/var/run/zeta:ro
 
 volumes:
   controller-data:
   agent-data:
   caddy-data:
+  zeta-run:

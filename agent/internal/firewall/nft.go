@@ -11,11 +11,11 @@ type nftBackend struct {
 	iface string
 }
 
-func (n *nftBackend) apply(serviceRules, extraRules []Rule, proxyPort int) error {
+func (n *nftBackend) apply(serviceRules, extraRules []Rule, webPort int) error {
 	exec.Command("nft", "delete", "table", "inet", "zeta").Run() //nolint:errcheck
 
 	cmd := exec.Command("nft", "-f", "-")
-	cmd.Stdin = strings.NewReader(n.buildScript(serviceRules, extraRules, proxyPort))
+	cmd.Stdin = strings.NewReader(n.buildScript(serviceRules, extraRules, webPort))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("nft: %w: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -29,7 +29,7 @@ func (n *nftBackend) flush() {
 	}
 }
 
-func (n *nftBackend) buildScript(serviceRules, extraRules []Rule, proxyPort int) string {
+func (n *nftBackend) buildScript(serviceRules, extraRules []Rule, webPort int) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "table inet zeta {\n")
@@ -48,7 +48,7 @@ func (n *nftBackend) buildScript(serviceRules, extraRules []Rule, proxyPort int)
 				continue
 			}
 			seen[ip] = true
-			fmt.Fprintf(&b, "        ip saddr %s tcp dport %d accept\n", ip, proxyPort)
+			fmt.Fprintf(&b, "        ip saddr %s tcp dport %d accept\n", ip, webPort)
 		}
 	}
 

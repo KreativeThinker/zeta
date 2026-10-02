@@ -1,8 +1,6 @@
 package main
 
 import (
-	"net"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,7 +9,6 @@ import (
 	"github.com/kreativethinker/zeta/agent/internal/dns"
 	"github.com/kreativethinker/zeta/agent/internal/firewall"
 	"github.com/kreativethinker/zeta/agent/internal/pathsel"
-	"github.com/kreativethinker/zeta/agent/internal/proxy"
 	"github.com/kreativethinker/zeta/agent/internal/relay"
 	"github.com/kreativethinker/zeta/agent/internal/state"
 	"github.com/kreativethinker/zeta/agent/internal/wg"
@@ -27,21 +24,19 @@ const (
 	pathRetryInterval = 2 * time.Minute
 )
 
-// Agent owns one node's mesh state: WireGuard peers, DNS records, proxy
-// routes, and firewall rules, all kept in sync with the controller's
+// Agent owns one node's mesh state: WireGuard peers, DNS records, and
+// firewall rules, all kept in sync with the controller's
 // NetworkMap and the local zetafile/Docker-discovered services.
 type Agent struct {
 	cfg      *config.Config
 	st       *state.State
 	wgMgr    *wg.Manager
 	resolver *dns.Resolver
-	gateway  *proxy.Gateway
 	fwMgr    *firewall.Manager // nil if nft unavailable
 
 	zf         atomic.Pointer[config.Zetafile]
 	dockerSvcs atomic.Pointer[[]config.ZetaService]
 	hostToIP   atomic.Pointer[map[string]string]
-	proxyPort  int
 
 	relayClient *relay.Client
 	pathMgr     *pathsel.Manager
@@ -53,17 +48,13 @@ type Agent struct {
 	send chan<- *zetapb.SyncUpdate // guarded by mu; nil when disconnected
 }
 
-func NewAgent(cfg *config.Config, st *state.State, wgMgr *wg.Manager, resolver *dns.Resolver, gateway *proxy.Gateway, fwMgr *firewall.Manager) *Agent {
-	_, portStr, _ := net.SplitHostPort(cfg.Proxy.Addr)
-	proxyPort, _ := strconv.Atoi(portStr)
+func NewAgent(cfg *config.Config, st *state.State, wgMgr *wg.Manager, resolver *dns.Resolver, fwMgr *firewall.Manager) *Agent {
 	return &Agent{
 		cfg:         cfg,
 		st:          st,
 		wgMgr:       wgMgr,
 		resolver:    resolver,
-		gateway:     gateway,
 		fwMgr:       fwMgr,
-		proxyPort:   proxyPort,
 		relayClient: relay.New(cfg.WireGuard.ListenPort),
 		pathMgr:     pathsel.New(pathHandshakeTimeout, pathRetryInterval),
 	}

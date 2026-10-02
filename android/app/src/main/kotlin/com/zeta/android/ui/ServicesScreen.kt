@@ -104,7 +104,7 @@ private fun ServiceCard(service: ServiceItem, onOpen: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "${service.meshIp}:1080",
+                    service.meshIp,
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

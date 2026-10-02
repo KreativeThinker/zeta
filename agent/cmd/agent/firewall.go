@@ -8,6 +8,9 @@ import (
 	"github.com/kreativethinker/zeta/agent/internal/firewall"
 )
 
+// webPort is where Caddy serves private (mesh-only) sites.
+const webPort = 80
+
 // applyFirewallRules recomputes and applies the firewall rule set from the
 // effective service ACLs, current peer IPs, and any user-configured extra
 // rules in the zetafile.
@@ -52,7 +55,7 @@ func (a *Agent) applyFirewall() {
 		}
 	}
 
-	if err := a.fwMgr.Apply(serviceRules, extraRules, a.proxyPort); err != nil {
+	if err := a.fwMgr.Apply(serviceRules, extraRules, webPort); err != nil {
 		slog.Error("applying firewall rules", "err", err)
 	}
 }

@@ -13,7 +13,7 @@ type Rule struct {
 }
 
 type backend interface {
-	apply(serviceRules, extraRules []Rule, proxyPort int) error
+	apply(serviceRules, extraRules []Rule, webPort int) error
 	flush()
 }
 
@@ -67,11 +67,11 @@ func New(iface, prefer string) *Manager {
 }
 
 // Apply replaces all Zeta-managed firewall rules.
-func (m *Manager) Apply(serviceRules, extraRules []Rule, proxyPort int) error {
+func (m *Manager) Apply(serviceRules, extraRules []Rule, webPort int) error {
 	if m.b == nil {
 		return nil
 	}
-	return m.b.apply(serviceRules, extraRules, proxyPort)
+	return m.b.apply(serviceRules, extraRules, webPort)
 }
 
 // Flush removes all Zeta-managed firewall rules. Call on agent shutdown.

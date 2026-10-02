@@ -36,10 +36,10 @@ fun MeshWebViewScreen(
 ) {
     // Use the mesh hostname as the URL authority so that:
     // 1. OkHttp resolves it via MeshDnsResolver (hostname → mesh IP)
-    // 2. The Host header is set automatically from the URL (proxy routes by Host)
+    // 2. The Host header is set automatically from the URL (Caddy routes by Host)
     // 3. The network security config permits cleartext for *.mesh
     val meshHost = "$serviceName.$peerHostname.$meshDomain"
-    val targetBase = "http://$meshHost:1080"
+    val targetBase = "http://$meshHost"
 
     Scaffold(
         topBar = {
@@ -84,7 +84,7 @@ fun MeshWebViewScreen(
                                     // encodes the colon in "host:port" as %3A, which OkHttp rejects.
                                     val path = request.url.path?.takeIf { it.isNotEmpty() } ?: "/"
                                     val query = request.url.query?.let { "?$it" } ?: ""
-                                    val rewritten = "http://$meshHost:1080$path$query"
+                                    val rewritten = "http://$meshHost$path$query"
 
                                     val reqBuilder = Request.Builder().url(rewritten)
                                     request.requestHeaders.forEach { (k, v) ->

@@ -12,18 +12,21 @@
 // Label schema (on the container, e.g. via `labels:` in compose.yml):
 //
 //	caddy         (required) full hostname Caddy routes this service on,
-//	              e.g. "myservice.shire.mesh" (private/mesh, default) or
-//	              "myservice.example.com" (public, opt-in below). The mesh
-//	              service name registered with zeta is the first label of
-//	              this hostname.
-//	zeta.public   (optional) "true" to bind this site on Caddy's public
-//	              interface instead of its private/mesh-only one. Defaults
-//	              to private. Public services are never registered with
-//	              zeta's mesh DNS — Caddy routes them independently.
+//	              e.g. "myservice.shire.mesh" (private) or
+//	              "myservice.example.com" (public). The mesh service name
+//	              registered with zeta is the first label of this hostname.
+//	zeta.private_network
+//	              (optional) "true" to make this site mesh-only: the shim
+//	              serves it on plain http and aborts any connection from
+//	              outside the mesh CIDR. Absent = public, routed by Caddy
+//	              untouched and never registered with mesh DNS.
 //	zeta.access   (optional) comma-separated access list, same format as
 //	              before; defaults to "*" (any enrolled mesh peer) since
 //	              per-user ACLs are a later phase. Ignored for public
 //	              services.
+//
+// Caddy reads containers through ServeShim, a read-only Docker API proxy
+// that injects the mesh-only guard (see gate).
 package dockerdiscovery
 
 import (
